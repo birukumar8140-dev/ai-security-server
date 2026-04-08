@@ -3,7 +3,9 @@ import sqlite3
 
 app = Flask(__name__)
 
-# 🔹 Init DB
+# -----------------------------
+# 📦 Database setup
+# -----------------------------
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
@@ -19,7 +21,9 @@ def init_db():
 
 init_db()
 
-# 🔹 Receive data
+# -----------------------------
+# 📡 Receive data from scanner
+# -----------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
     data = request.json
@@ -35,140 +39,133 @@ def receive_data():
     conn.commit()
     conn.close()
 
-    print("Saved:", data)
-
+    print("📥 Received:", data)
     return jsonify({"status": "saved"})
 
-
-# 🔹 Dashboard
+# -----------------------------
+# 📊 Dashboard
+# -----------------------------
 @app.route("/")
 def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT process, MAX(score)
-        FROM logs
-        GROUP BY process
-        ORDER BY MAX(score) DESC
-        LIMIT 50
-    """)
-
+    cursor.execute("SELECT process, score FROM logs ORDER BY id DESC LIMIT 50")
     rows = cursor.fetchall()
+
     conn.close()
 
-    data = [{"process": r[0], "score": r[1]} for r in rows]
+    high = sum(1 for r in rows if r[1] > 70)
+    medium = sum(1 for r in rows if 30 < r[1] <= 70)
+    low = sum(1 for r in rows if r[1] <= 30)
 
-    # 🔥 Classification
-    high = [d for d in data if d["score"] > 70]
-    medium = [d for d in data if 40 <= d["score"] <= 70]
-    low = [d for d in data if d["score"] < 40]
-
-    # 🔥 HTML
-    html = """
+    html = f"""
     <html>
     <head>
-    <title>AI Security Dashboard</title>
+        <title>AI Security Dashboard</title>
+        <style>
+            body {{
+                background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+                color: white;
+                text-align: center;
+                font-family: Arial;
+            }}
 
-    <meta http-equiv="refresh" content="5">
+            table {{
+                margin: auto;
+                border-collapse: collapse;
+                width: 70%;
+            }}
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            th, td {{
+                border: 1px solid white;
+                padding: 10px;
+            }}
 
-    <style>
-    body {
-        background: #0b1f3a;
-        color: white;
-        font-family: Arial;
-        text-align: center;
-    }
-
-    table {
-        margin: auto;
-        border-collapse: collapse;
-        width: 60%;
-    }
-
-    th, td {
-        border: 1px solid white;
-        padding: 8px;
-    }
-    </style>
-
+            .high {{ color: red; }}
+            .medium {{ color: yellow; }}
+            .low {{ color: lightgreen; }}
+        </style>
     </head>
+
     <body>
 
     <h1>🔥 AI Security Dashboard</h1>
-    """
 
-    html += f"<h2 style='color:red;'>🔴 High: {len(high)}</h2>"
-    html += f"<h2 style='color:yellow;'>🟡 Medium: {len(medium)}</h2>"
-    html += f"<h2 style='color:lightgreen;'>🟢 Low: {len(low)}</h2>"
+    <h2 class="high">🔴 High: {high}</h2>
+    <h2 class="medium">🟡 Medium: {medium}</h2>
+    <h2 class="low">🟢 Low: {low}</h2>
 
-    # 📊 Graph
-    html += """
-    <canvas id="myChart"></canvas>
+    <canvas id="chart" width="400" height="200"></canvas>
 
-    <script>
-    const data = {
-        labels: ["High", "Medium", "Low"],
-        datasets: [{
-            label: "Threat Levels",
-            data: [""" + str(len(high)) + "," + str(len(medium)) + "," + str(len(low)) + """],
-            backgroundColor: ["red", "yellow", "green"]
-        }]
-    };
-
-    new Chart(document.getElementById("myChart"), {
-        type: "bar",
-        data: data
-    });
-
-    // 🚨 ALERT SYSTEM
-    const highCount = """ + str(len(high)) + """;
-
-    if (highCount > 0) {
-        alert("🚨 HIGH THREAT DETECTED!");
-
-        var audio = new Audio("https://www.soundjay.com/button/beep-07.wav");
-        audio.play();
-    }
-    </script>
-    """
-
-    # 📋 Table
-    html += """
     <table>
-    <tr>
-    <th>Process</th>
-    <th>Score</th>
-    </tr>
+        <tr>
+            <th>Process</th>
+            <th>Score</th>
+        </tr>
     """
 
-    for d in data:
-        if d["score"] > 70:
+    for process, score in rows:
+        if score > 70:
             color = "red"
-        elif d["score"] >= 40:
+        elif score > 30:
             color = "yellow"
         else:
             color = "lightgreen"
 
-        html += f"""
-        <tr style="color:{color}">
-            <td>{d['process']}</td>
-            <td>{d['score']}</td>
-        </tr>
-        """
+        html += f"<tr><td>{process}</td><td style='color:{color}'>{score}</td></tr>"
 
-    html += """
+    html += f"""
     </table>
+
+    <!-- SOUND -->
+    <audio id="alertSound">
+        <source src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- ALERT SCRIPT -->
+    <script>
+        var high = {high};
+
+        if (high > 0) {{
+            alert("🚨 HIGH THREAT DETECTED!");
+
+            var audio = document.getElementById("alertSound");
+            audio.play().catch(() => console.log("Autoplay blocked"));
+        }}
+
+        // AUTO REFRESH
+        setTimeout(() => {{
+            location.reload();
+        }}, 5000);
+    </script>
+
+    <!-- GRAPH -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        var ctx = document.getElementById('chart').getContext('2d');
+
+        new Chart(ctx, {{
+            type: 'bar',
+            data: {{
+                labels: ['High', 'Medium', 'Low'],
+                datasets: [{{
+                    label: 'Threat Levels',
+                    data: [{high}, {medium}, {low}],
+                    backgroundColor: ['red', 'yellow', 'green']
+                }}]
+            }}
+        }});
+    </script>
 
     </body>
     </html>
     """
 
-    return render_template_string(html)
+    return html
 
-
-# 🔹 Run
+# -----------------------------
+# 🚀 Run server
+# -----------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
