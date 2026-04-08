@@ -65,48 +65,86 @@ LIMIT 50
     low = [d for d in data if d["score"] < 40]
 
     html = f"""
-    <html>
-    <head>
-        <title>AI Security Dashboard</title>
-        <meta http-equiv="refresh" content="5">
-        <style>
-            body {{
-                background: #0b1f3a;
-                color: white;
-                font-family: Arial;
-                text-align: center;
-            }}
-            table {{
-                margin: auto;
-                border-collapse: collapse;
-                width: 60%;
-            }}
-            th, td {{
-                border: 1px solid white;
-                padding: 8px;
-            }}
-            th {{
-                background: #1f3f6b;
-            }}
-            .high {{ color: red; }}
-            .medium {{ color: yellow; }}
-            .low {{ color: lightgreen; }}
-        </style>
-    </head>
-    <body>
+<html>
+<head>
+<title>AI Security Dashboard</title>
 
-        <h1>🔥 AI Security Dashboard</h1>
+<meta http-equiv="refresh" content="5">
 
-        <h2 class="high">🔴 High: {len(high)}</h2>
-        <h2 class="medium">🟡 Medium: {len(medium)}</h2>
-        <h2 class="low">🟢 Low: {len(low)}</h2>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-        <table>
-            <tr>
-                <th>Process</th>
-                <th>Score</th>
-            </tr>
+<style>
+body {{
+    background: #0b1f3a;
+    color: white;
+    font-family: Arial;
+    text-align: center;
+}}
+
+canvas {{
+    margin: 20px;
+}}
+
+table {{
+    margin: auto;
+    border-collapse: collapse;
+    width: 60%;
+}}
+
+th, td {{
+    border: 1px solid white;
+    padding: 8px;
+}}
+</style>
+
+</head>
+<body>
+
+<h1>🔥 AI Security Dashboard</h1>
+
+<h2 style="color:red;">High: {len(high)}</h2>
+<h2 style="color:yellow;">Medium: {len(medium)}</h2>
+<h2 style="color:lightgreen;">Low: {len(low)}</h2>
+
+<canvas id="myChart" width="400" height="200"></canvas>
+
+<script>
+const data = {{
+    labels: ["High", "Medium", "Low"],
+    datasets: [{{
+        label: "Threat Levels",
+        data: [{len(high)}, {len(medium)}, {len(low)}],
+        backgroundColor: ["red", "yellow", "green"]
+    }}]
+}};
+
+new Chart(document.getElementById("myChart"), {{
+    type: "bar",
+    data: data
+}});
+</script>
+
+<table>
+<tr>
+<th>Process</th>
+<th>Score</th>
+</tr>
+"""
+
+for d in data:
+    html += f"""
+    <tr>
+        <td>{d['process']}</td>
+        <td>{d['score']}</td>
+    </tr>
     """
+
+html += """
+</table>
+
+</body>
+</html>
+"""
 
     for d in data:
         if d["score"] > 70:
