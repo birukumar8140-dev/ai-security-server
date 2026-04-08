@@ -46,7 +46,13 @@ def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT process, score FROM logs ORDER BY id DESC LIMIT 50")
+    cursor.execute("""
+SELECT process, MAX(score)
+FROM logs
+GROUP BY process
+ORDER BY MAX(score) DESC
+LIMIT 50
+""")
     rows = cursor.fetchall()
 
     conn.close()
