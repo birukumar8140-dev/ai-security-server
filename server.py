@@ -3,7 +3,7 @@ import sqlite3
 
 app = Flask(__name__)
 
-# 🔹 Create DB if not exists
+# 🔹 Init DB
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
@@ -19,7 +19,7 @@ def init_db():
 
 init_db()
 
-# 🔹 Receive data from scanner
+# 🔹 Receive data
 @app.route("/data", methods=["POST"])
 def receive_data():
     data = request.json
@@ -35,26 +35,27 @@ def receive_data():
     conn.commit()
     conn.close()
 
-    print("✅ Saved:", data)
+    print("Saved:", data)
 
     return jsonify({"status": "saved"})
 
 
-# 🔹 Dashboard UI
+# 🔹 Dashboard
 @app.route("/")
 def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
+    # ✅ Unique processes (no duplicate spam)
     cursor.execute("""
-SELECT process, MAX(score)
-FROM logs
-GROUP BY process
-ORDER BY MAX(score) DESC
-LIMIT 50
-""")
-    rows = cursor.fetchall()
+        SELECT process, MAX(score)
+        FROM logs
+        GROUP BY process
+        ORDER BY MAX(score) DESC
+        LIMIT 50
+    """)
 
+    rows = cursor.fetchall()
     conn.close()
 
     data = [{"process": r[0], "score": r[1]} for r in rows]
@@ -64,105 +65,90 @@ LIMIT 50
     medium = [d for d in data if 40 <= d["score"] <= 70]
     low = [d for d in data if d["score"] < 40]
 
-    html = f"""
-<html>
-<head>
-<title>AI Security Dashboard</title>
+    # 🔥 HTML (SAFE VERSION - NO CRASH)
+    html = """
+    <html>
+    <head>
+    <title>AI Security Dashboard</title>
 
-<meta http-equiv="refresh" content="5">
+    <meta http-equiv="refresh" content="5">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<style>
-body {{
-    background: #0b1f3a;
-    color: white;
-    font-family: Arial;
-    text-align: center;
-}}
+    <style>
+    body {
+        background: #0b1f3a;
+        color: white;
+        font-family: Arial;
+        text-align: center;
+    }
 
-canvas {{
-    margin: 20px;
-}}
+    table {
+        margin: auto;
+        border-collapse: collapse;
+        width: 60%;
+    }
 
-table {{
-    margin: auto;
-    border-collapse: collapse;
-    width: 60%;
-}}
+    th, td {
+        border: 1px solid white;
+        padding: 8px;
+    }
+    </style>
 
-th, td {{
-    border: 1px solid white;
-    padding: 8px;
-}}
-</style>
+    </head>
+    <body>
 
-</head>
-<body>
+    <h1>🔥 AI Security Dashboard</h1>
+    """
 
-<h1>🔥 AI Security Dashboard</h1>
+    html += f"<h2 style='color:red;'>High: {len(high)}</h2>"
+    html += f"<h2 style='color:yellow;'>Medium: {len(medium)}</h2>"
+    html += f"<h2 style='color:lightgreen;'>Low: {len(low)}</h2>"
 
-<h2 style="color:red;">High: {len(high)}</h2>
-<h2 style="color:yellow;">Medium: {len(medium)}</h2>
-<h2 style="color:lightgreen;">Low: {len(low)}</h2>
+    html += """
+    <canvas id="myChart"></canvas>
 
-<canvas id="myChart" width="400" height="200"></canvas>
+    <script>
+    const data = {
+        labels: ["High", "Medium", "Low"],
+        datasets: [{
+            label: "Threat Levels",
+            data: [""" + str(len(high)) + "," + str(len(medium)) + "," + str(len(low)) + """],
+            backgroundColor: ["red", "yellow", "green"]
+        }]
+    };
 
-<script>
-const data = {{
-    labels: ["High", "Medium", "Low"],
-    datasets: [{{
-        label: "Threat Levels",
-        data: [{len(high)}, {len(medium)}, {len(low)}],
-        backgroundColor: ["red", "yellow", "green"]
-    }}]
-}};
+    new Chart(document.getElementById("myChart"), {
+        type: "bar",
+        data: data
+    });
+    </script>
 
-new Chart(document.getElementById("myChart"), {{
-    type: "bar",
-    data: data
-}});
-</script>
-
-<table>
-<tr>
-<th>Process</th>
-<th>Score</th>
-</tr>
-"""
-
-for d in data:
-    html += f"""
+    <table>
     <tr>
-        <td>{d['process']}</td>
-        <td>{d['score']}</td>
+    <th>Process</th>
+    <th>Score</th>
     </tr>
     """
 
-html += """
-</table>
-
-</body>
-</html>
-"""
-
     for d in data:
         if d["score"] > 70:
-            cls = "high"
+            color = "red"
         elif d["score"] >= 40:
-            cls = "medium"
+            color = "yellow"
         else:
-            cls = "low"
+            color = "lightgreen"
 
         html += f"""
-            <tr class="{cls}">
-                <td>{d["process"]}</td>
-                <td>{d["score"]}</td>
-            </tr>
+        <tr style="color:{color}">
+            <td>{d['process']}</td>
+            <td>{d['score']}</td>
+        </tr>
         """
 
     html += """
-        </table>
+    </table>
+
     </body>
     </html>
     """
@@ -170,6 +156,6 @@ html += """
     return render_template_string(html)
 
 
-# 🔹 Run server
+# 🔹 Run
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
