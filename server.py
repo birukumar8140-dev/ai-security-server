@@ -1,7 +1,25 @@
 from flask import Flask, request, jsonify
 import sqlite3
+import requests
 
 app = Flask(__name__)
+
+# -----------------------------
+# 🔑 TELEGRAM CONFIG
+# -----------------------------
+BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
+CHAT_ID = "2091748695"
+
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    try:
+        requests.post(url, data=data)
+    except:
+        pass
 
 # -----------------------------
 # 📦 Database setup
@@ -40,6 +58,11 @@ def receive_data():
     conn.close()
 
     print("📥 Received:", data)
+
+    # 🚨 TELEGRAM ALERT (HIGH ONLY)
+    if data["score"] > 70:
+        send_telegram(f"🚨 HIGH THREAT!\nProcess: {data['process']}\nScore: {data['score']}")
+
     return jsonify({"status": "saved"})
 
 # -----------------------------
@@ -63,29 +86,22 @@ def dashboard():
     <html>
     <head>
         <title>AI Security Dashboard</title>
-
         <style>
             body {{
-                background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+                background: #0f2027;
                 color: white;
                 text-align: center;
                 font-family: Arial;
             }}
-
             table {{
                 margin: auto;
                 border-collapse: collapse;
                 width: 70%;
             }}
-
             th, td {{
                 border: 1px solid white;
                 padding: 10px;
             }}
-
-            .high {{ color: red; }}
-            .medium {{ color: yellow; }}
-            .low {{ color: lightgreen; }}
         </style>
     </head>
 
@@ -93,11 +109,9 @@ def dashboard():
 
     <h1>🔥 AI Security Dashboard</h1>
 
-    <h2 class="high">🔴 High: {high}</h2>
-    <h2 class="medium">🟡 Medium: {medium}</h2>
-    <h2 class="low">🟢 Low: {low}</h2>
-
-    <canvas id="chart" width="400" height="200"></canvas>
+    <h2>🔴 High: {high}</h2>
+    <h2>🟡 Medium: {medium}</h2>
+    <h2>🟢 Low: {low}</h2>
 
     <table>
         <tr>
@@ -107,19 +121,11 @@ def dashboard():
     """
 
     for process, score in rows:
-        if score > 70:
-            color = "red"
-        elif score > 30:
-            color = "yellow"
-        else:
-            color = "lightgreen"
-
-        html += f"<tr><td>{process}</td><td style='color:{color}'>{score}</td></tr>"
+        html += f"<tr><td>{process}</td><td>{score}</td></tr>"
 
     html += f"""
     </table>
 
-    <!-- 🚨 ALERT + 🔊 SOUND -->
     <script>
         var high = {high};
 
@@ -128,38 +134,14 @@ def dashboard():
 
             var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
 
-            audio.play().then(() => {{
-                console.log("Sound played");
-            }}).catch(() => {{
-                console.log("Autoplay blocked → click needed");
-
-                // fallback
+            audio.play().catch(() => {{
                 document.body.onclick = () => audio.play();
             }});
         }}
 
-        // 🔄 AUTO REFRESH
         setTimeout(() => {{
             location.reload();
         }}, 5000);
-    </script>
-
-    <!-- 📊 GRAPH -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        var ctx = document.getElementById('chart').getContext('2d');
-
-        new Chart(ctx, {{
-            type: 'bar',
-            data: {{
-                labels: ['High', 'Medium', 'Low'],
-                datasets: [{{
-                    label: 'Threat Levels',
-                    data: [{high}, {medium}, {low}],
-                    backgroundColor: ['red', 'yellow', 'green']
-                }}]
-            }}
-        }});
     </script>
 
     </body>
