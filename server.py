@@ -59,7 +59,7 @@ def receive_data():
 
     print("📥 Received:", data)
 
-    # 🚨 TELEGRAM ALERT (HIGH ONLY)
+    # 🚨 TELEGRAM ALERT
     if data["score"] > 70:
         send_telegram(f"🚨 HIGH THREAT!\nProcess: {data['process']}\nScore: {data['score']}")
 
@@ -86,6 +86,7 @@ def dashboard():
     <html>
     <head>
         <title>AI Security Dashboard</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
             body {{
                 background: #0f2027;
@@ -102,6 +103,10 @@ def dashboard():
                 border: 1px solid white;
                 padding: 10px;
             }}
+            canvas {{
+                max-width: 400px;
+                margin: auto;
+            }}
         </style>
     </head>
 
@@ -113,6 +118,8 @@ def dashboard():
     <h2>🟡 Medium: {medium}</h2>
     <h2>🟢 Low: {low}</h2>
 
+    <canvas id="chart"></canvas>
+
     <table>
         <tr>
             <th>Process</th>
@@ -121,41 +128,58 @@ def dashboard():
     """
 
     for process, score in rows:
-        html += f"<tr><td>{process}</td><td>{score}</td></tr>"
+        color = "white"
+        if score > 70:
+            color = "red"
+        elif score > 30:
+            color = "yellow"
+        else:
+            color = "lightgreen"
+
+        html += f"<tr><td style='color:{color}'>{process}</td><td>{score}</td></tr>"
 
     html += f"""
     </table>
 
     <script>
         let high = {high};
+        let medium = {medium};
+        let low = {low};
 
-        // 🔥 SOUND FUNCTION (RELIABLE)
+        // 📊 GRAPH
+        const ctx = document.getElementById('chart');
+
+        new Chart(ctx, {{
+            type: 'bar',
+            data: {{
+                labels: ['High', 'Medium', 'Low'],
+                datasets: [{{
+                    label: 'Threat Levels',
+                    data: [high, medium, low],
+                    backgroundColor: ['red', 'yellow', 'green']
+                }}]
+            }}
+        }});
+
+        // 🔊 SOUND
         function playAlarm() {{
             let audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
             audio.loop = true;
 
-            audio.play().then(() => {{
-                console.log("Sound playing");
-            }}).catch(() => {{
-                console.log("Autoplay blocked, waiting for click...");
+            audio.play().catch(() => {{
                 document.body.addEventListener("click", () => {{
                     audio.play();
                 }});
             }});
         }}
 
-        // 🚨 ALERT SYSTEM
+        // 🚨 ALERT
         if (high > 0) {{
-
-            // Prevent repeat alert
             if (!localStorage.getItem("alerted")) {{
                 alert("🚨 HIGH THREAT DETECTED!");
-
                 playAlarm();
-
                 localStorage.setItem("alerted", "yes");
             }}
-
         }} else {{
             localStorage.removeItem("alerted");
         }}
@@ -164,6 +188,7 @@ def dashboard():
         setTimeout(() => {{
             location.reload();
         }}, 5000);
+
     </script>
 
     </body>
