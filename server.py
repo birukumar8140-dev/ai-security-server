@@ -22,7 +22,7 @@ def init_db():
 init_db()
 
 # -----------------------------
-# 📡 Receive data from scanner
+# 📡 Receive data
 # -----------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
@@ -63,6 +63,7 @@ def dashboard():
     <html>
     <head>
         <title>AI Security Dashboard</title>
+
         <style>
             body {{
                 background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
@@ -118,29 +119,32 @@ def dashboard():
     html += f"""
     </table>
 
-    <!-- SOUND -->
+    <!-- 🔊 SOUND -->
     <audio id="alertSound">
         <source src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" type="audio/mpeg">
     </audio>
 
-    <!-- ALERT SCRIPT -->
+    <!-- 🚨 ALERT SCRIPT -->
     <script>
         var high = {high};
 
         if (high > 0) {{
-            alert("🚨 HIGH THREAT DETECTED!");
-
-            var audio = document.getElementById("alertSound");
-            audio.play().catch(() => console.log("Autoplay blocked"));
+            alert("🚨 HIGH THREAT DETECTED! (Click anywhere for sound)");
         }}
 
-        // AUTO REFRESH
+        // 🔊 SOUND ON CLICK (100% WORKING)
+        document.body.addEventListener("click", function () {{
+            var audio = document.getElementById("alertSound");
+            audio.play().catch(() => console.log("Sound blocked"));
+        }});
+
+        // 🔄 AUTO REFRESH
         setTimeout(() => {{
             location.reload();
         }}, 5000);
     </script>
 
-    <!-- GRAPH -->
+    <!-- 📊 GRAPH -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         var ctx = document.getElementById('chart').getContext('2d');
@@ -165,7 +169,7 @@ def dashboard():
     return html
 
 # -----------------------------
-# 🚀 Run server
+# 🚀 Run
 # -----------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
