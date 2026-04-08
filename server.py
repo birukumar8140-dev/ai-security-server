@@ -46,7 +46,6 @@ def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    # ✅ Unique processes (no duplicate spam)
     cursor.execute("""
         SELECT process, MAX(score)
         FROM logs
@@ -65,7 +64,7 @@ def dashboard():
     medium = [d for d in data if 40 <= d["score"] <= 70]
     low = [d for d in data if d["score"] < 40]
 
-    # 🔥 HTML (SAFE VERSION - NO CRASH)
+    # 🔥 HTML
     html = """
     <html>
     <head>
@@ -101,10 +100,11 @@ def dashboard():
     <h1>🔥 AI Security Dashboard</h1>
     """
 
-    html += f"<h2 style='color:red;'>High: {len(high)}</h2>"
-    html += f"<h2 style='color:yellow;'>Medium: {len(medium)}</h2>"
-    html += f"<h2 style='color:lightgreen;'>Low: {len(low)}</h2>"
+    html += f"<h2 style='color:red;'>🔴 High: {len(high)}</h2>"
+    html += f"<h2 style='color:yellow;'>🟡 Medium: {len(medium)}</h2>"
+    html += f"<h2 style='color:lightgreen;'>🟢 Low: {len(low)}</h2>"
 
+    # 📊 Graph
     html += """
     <canvas id="myChart"></canvas>
 
@@ -122,8 +122,21 @@ def dashboard():
         type: "bar",
         data: data
     });
-    </script>
 
+    // 🚨 ALERT SYSTEM
+    const highCount = """ + str(len(high)) + """;
+
+    if (highCount > 0) {
+        alert("🚨 HIGH THREAT DETECTED!");
+
+        var audio = new Audio("https://www.soundjay.com/button/beep-07.wav");
+        audio.play();
+    }
+    </script>
+    """
+
+    # 📋 Table
+    html += """
     <table>
     <tr>
     <th>Process</th>
