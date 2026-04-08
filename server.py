@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 import sqlite3
 
 app = Flask(__name__)
@@ -119,24 +119,24 @@ def dashboard():
     html += f"""
     </table>
 
-    <!-- 🔊 SOUND -->
-    <audio id="alertSound">
-        <source src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" type="audio/mpeg">
-    </audio>
-
-    <!-- 🚨 ALERT SCRIPT -->
+    <!-- 🚨 ALERT + 🔊 SOUND -->
     <script>
         var high = {high};
 
         if (high > 0) {{
-            alert("🚨 HIGH THREAT DETECTED! (Click anywhere for sound)");
-        }}
+            alert("🚨 HIGH THREAT DETECTED!");
 
-        // 🔊 SOUND ON CLICK (100% WORKING)
-        document.body.addEventListener("click", function () {{
-            var audio = document.getElementById("alertSound");
-            audio.play().catch(() => console.log("Sound blocked"));
-        }});
+            var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+
+            audio.play().then(() => {{
+                console.log("Sound played");
+            }}).catch(() => {{
+                console.log("Autoplay blocked → click needed");
+
+                // fallback
+                document.body.onclick = () => audio.play();
+            }});
+        }}
 
         // 🔄 AUTO REFRESH
         setTimeout(() => {{
