@@ -169,22 +169,34 @@ def dashboard():
     </table>
 
     <script>
-        var high = {high};
+    var high = {{high}};
 
-        if (high > 0) {{
-            alert("🚨 HIGH THREAT DETECTED!");
+    // ✅ Local storage check
+    let lastAlert = localStorage.getItem("lastAlert");
 
-            var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+    if (high > 0 && lastAlert != "shown") {
 
-            audio.play().catch(() => {{
-                document.body.onclick = () => audio.play();
-            }});
-        }}
+        alert("🚨 HIGH THREAT DETECTED!");
 
-        setTimeout(() => {{
-            location.reload();
-        }}, 5000);
-    </script>
+        var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+
+        audio.play().catch(() => {
+            document.body.onclick = () => audio.play();
+        });
+
+        // mark as shown
+        localStorage.setItem("lastAlert", "shown");
+    }
+
+    // ✅ Reset when no threat
+    if (high == 0) {
+        localStorage.removeItem("lastAlert");
+    }
+
+    setTimeout(() => {
+        location.reload();
+    }, 5000);
+</script>
 
     </body>
     </html>
