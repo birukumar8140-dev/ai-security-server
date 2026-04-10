@@ -169,7 +169,7 @@ def dashboard():
     </table>
 
     <script>
-    var high = {{high}};
+    var high = {high};
 
     // ✅ Local storage check
     let lastAlert = localStorage.getItem("lastAlert");
