@@ -27,17 +27,19 @@ def send_telegram(message):
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             process TEXT,
-            score INTEGER
+            score INTEGER,
+            device TEXT,
+            time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
     conn.commit()
     conn.close()
-
-init_db()
 
 # -----------------------------
 # 📡 Receive data
@@ -46,18 +48,24 @@ init_db()
 def receive_data():
     data = request.json
 
+    process = data.get("process")
+    score = data.get("score")
+    device = data.get("device", "unknown")
+
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    cursor.execute(
-        "INSERT INTO logs (process, score) VALUES (?, ?)",
-        (data["process"], data["score"])
-    )
+    cursor.execute("""
+        INSERT INTO logs (process, score, device)
+        VALUES (?, ?, ?)
+    """, (process, score, device))
 
     conn.commit()
     conn.close()
 
-    print("📥 Received:", data)
+    print(f"📥 {device} → {process} ({score})")
+
+    return jsonify({"status": "saved"})
 
     # 🚨 TELEGRAM ALERT
     if data["score"] > 70:
