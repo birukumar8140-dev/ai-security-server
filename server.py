@@ -8,8 +8,8 @@ app = Flask(__name__)
 # -----------------------------
 # 🔑 TELEGRAM CONFIG
 # -----------------------------
-BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
-CHAT_ID = "2091748695"
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
 
 def send_telegram(message):
     try:
@@ -24,7 +24,7 @@ def send_telegram(message):
 # ⏱ COOLDOWN SYSTEM
 # -----------------------------
 last_alert_time = {}
-ALERT_COOLDOWN = 60   # 60 sec (change if needed)
+ALERT_COOLDOWN = 60  # seconds
 
 def should_alert(key):
     now = time.time()
@@ -82,7 +82,7 @@ def receive_data():
 
     print(f"📥 {device} | {process} | {score} | {action}")
 
-    # 🚨 TELEGRAM ALERT (SMART)
+    # 🚨 SMART TELEGRAM ALERT
     if score >= 90:
         key = f"{device}-{process}"
 
@@ -169,34 +169,31 @@ def dashboard():
     </table>
 
     <script>
-    var high = {high};
+        var high = {high};
 
-    // ✅ Local storage check
-    let lastAlert = localStorage.getItem("lastAlert");
+        let lastAlert = localStorage.getItem("lastAlert");
 
-    if (high > 0 && lastAlert != "shown") {
+        if (high > 0 && lastAlert != "shown") {{
 
-        alert("🚨 HIGH THREAT DETECTED!");
+            alert("🚨 HIGH THREAT DETECTED!");
 
-        var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+            var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
 
-        audio.play().catch(() => {
-            document.body.onclick = () => audio.play();
-        });
+            audio.play().catch(() => {{
+                document.body.onclick = () => audio.play();
+            }});
 
-        // mark as shown
-        localStorage.setItem("lastAlert", "shown");
-    }
+            localStorage.setItem("lastAlert", "shown");
+        }}
 
-    // ✅ Reset when no threat
-    if (high == 0) {
-        localStorage.removeItem("lastAlert");
-    }
+        if (high == 0) {{
+            localStorage.removeItem("lastAlert");
+        }}
 
-    setTimeout(() => {
-        location.reload();
-    }, 5000);
-</script>
+        setTimeout(() => {{
+            location.reload();
+        }}, 5000);
+    </script>
 
     </body>
     </html>
