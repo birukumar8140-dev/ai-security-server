@@ -11,9 +11,20 @@ app = Flask(__name__)
 BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
 CHAT_ID = "2091748695"
 
-# cooldown storage
+def send_telegram(message):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": message}
+        )
+    except:
+        pass
+
+# -----------------------------
+# ⏱ COOLDOWN SYSTEM
+# -----------------------------
 last_alert_time = {}
-ALERT_COOLDOWN = 300  # 5 minutes
+ALERT_COOLDOWN = 60   # 60 sec (change if needed)
 
 def should_alert(key):
     now = time.time()
@@ -24,26 +35,23 @@ def should_alert(key):
         return True
     return False
 
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": message})
-    except:
-        pass
-
 # -----------------------------
-# 📦 DATABASE
+# 📦 DATABASE SETUP
 # -----------------------------
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             process TEXT,
-            score INTEGER
+            score INTEGER,
+            device TEXT,
+            action TEXT
         )
     """)
+
     conn.commit()
     conn.close()
 
@@ -56,29 +64,36 @@ init_db()
 def receive_data():
     data = request.json
 
-    process = data.get("process", "unknown")
-    score = data.get("score", 0)
+    process = data.get("process")
+    score = data.get("score")
+    device = data.get("device")
+    action = data.get("action", "none")
 
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO logs (process, score) VALUES (?, ?)",
-        (process, score)
+        "INSERT INTO logs (process, score, device, action) VALUES (?, ?, ?, ?)",
+        (process, score, device, action)
     )
 
     conn.commit()
     conn.close()
 
-    print("📥 Received:", process, score)
+    print(f"📥 {device} | {process} | {score} | {action}")
 
-    # 🚨 TELEGRAM ALERT (WITH COOLDOWN)
-    if score >= 90 and should_alert(process):
-        send_telegram(
-            f"🚨 HIGH THREAT!\n"
-            f"Process: {process}\n"
-            f"Score: {score}"
-        )
+    # 🚨 TELEGRAM ALERT (SMART)
+    if score >= 90:
+        key = f"{device}-{process}"
+
+        if should_alert(key):
+            send_telegram(
+                f"🚨 HIGH THREAT!\n"
+                f"Device: {device}\n"
+                f"Process: {process}\n"
+                f"Score: {score}\n"
+                f"Action: {action}"
+            )
 
     return jsonify({"status": "saved"})
 
@@ -90,7 +105,7 @@ def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT process, score FROM logs ORDER BY id DESC LIMIT 50")
+    cursor.execute("SELECT process, score, action FROM logs ORDER BY id DESC LIMIT 50")
     rows = cursor.fetchall()
 
     conn.close()
@@ -103,11 +118,9 @@ def dashboard():
     <html>
     <head>
         <title>AI Security Dashboard</title>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
         <style>
             body {{
-                background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+                background: #0f2027;
                 color: white;
                 text-align: center;
                 font-family: Arial;
@@ -115,14 +128,11 @@ def dashboard():
             table {{
                 margin: auto;
                 border-collapse: collapse;
-                width: 70%;
+                width: 80%;
             }}
             th, td {{
                 border: 1px solid white;
-                padding: 10px;
-            }}
-            canvas {{
-                margin-top: 30px;
+                padding: 8px;
             }}
         </style>
     </head>
@@ -135,17 +145,17 @@ def dashboard():
     <h2>🟡 Medium: {medium}</h2>
     <h2>🟢 Low: {low}</h2>
 
-    <canvas id="chart" width="300" height="150"></canvas>
-
     <table>
         <tr>
             <th>Process</th>
             <th>Score</th>
+            <th>Action</th>
         </tr>
     """
 
-    for process, score in rows:
+    for process, score, action in rows:
         color = "white"
+
         if score >= 90:
             color = "red"
         elif score > 30:
@@ -153,28 +163,15 @@ def dashboard():
         else:
             color = "lightgreen"
 
-        html += f"<tr><td style='color:{color}'>{process}</td><td>{score}</td></tr>"
+        html += f"<tr style='color:{color}'><td>{process}</td><td>{score}</td><td>{action}</td></tr>"
 
     html += f"""
     </table>
 
     <script>
-        // 📊 GRAPH
-        var ctx = document.getElementById('chart').getContext('2d');
-        new Chart(ctx, {{
-            type: 'bar',
-            data: {{
-                labels: ['High', 'Medium', 'Low'],
-                datasets: [{{
-                    label: 'Threat Levels',
-                    data: [{high}, {medium}, {low}],
-                }}]
-            }}
-        }});
+        var high = {high};
 
-        // 🚨 ALERT ONLY ONCE
-        if ({high} > 0 && !localStorage.getItem("alerted")) {{
-
+        if (high > 0) {{
             alert("🚨 HIGH THREAT DETECTED!");
 
             var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
@@ -182,16 +179,8 @@ def dashboard():
             audio.play().catch(() => {{
                 document.body.onclick = () => audio.play();
             }});
-
-            localStorage.setItem("alerted", "true");
         }}
 
-        // 🔄 RESET IF SAFE
-        if ({high} === 0) {{
-            localStorage.removeItem("alerted");
-        }}
-
-        // 🔁 AUTO REFRESH
         setTimeout(() => {{
             location.reload();
         }}, 5000);
