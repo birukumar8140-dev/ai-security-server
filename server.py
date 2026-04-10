@@ -22,12 +22,16 @@ def send_telegram(message):
         pass
 
 # -----------------------------
+# 🚨 SMART ALERT MEMORY
+# -----------------------------
+alerted_processes = set()
+
+# -----------------------------
 # 📦 Database setup
 # -----------------------------
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,9 +41,10 @@ def init_db():
             time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-
     conn.commit()
     conn.close()
+
+init_db()
 
 # -----------------------------
 # 📡 Receive data
@@ -65,11 +70,18 @@ def receive_data():
 
     print(f"📥 {device} → {process} ({score})")
 
-    return jsonify({"status": "saved"})
+    # 🚨 SMART TELEGRAM ALERT
+    if score > 70:
+        if process not in alerted_processes:
+            alerted_processes.add(process)
 
-    # 🚨 TELEGRAM ALERT
-    if data["score"] > 70:
-        send_telegram(f"🚨 HIGH THREAT!\nProcess: {data['process']}\nScore: {data['score']}")
+            send_telegram(
+                f"🚨 NEW THREAT!\nDevice: {device}\nProcess: {process}\nScore: {score}"
+            )
+
+    # reset 
+    if score < 40:
+        alerted_processes.discard(process)
 
     return jsonify({"status": "saved"})
 
@@ -81,7 +93,10 @@ def dashboard():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT process, score FROM logs ORDER BY id DESC LIMIT 50")
+    cursor.execute("""
+        SELECT process, score FROM logs
+        ORDER BY id DESC LIMIT 50
+    """)
     rows = cursor.fetchall()
 
     conn.close()
@@ -95,6 +110,7 @@ def dashboard():
     <head>
         <title>AI Security Dashboard</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
         <style>
             body {{
                 background: #0f2027;
