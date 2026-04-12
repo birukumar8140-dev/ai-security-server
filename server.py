@@ -3,15 +3,15 @@ import sqlite3
 import requests
 import time
 import os
+import bcrypt
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-# SESSION FIX
 app.config["SESSION_PERMANENT"] = False
 
 # -----------------------------
-# 🔑 TELEGRAM
+# TELEGRAM CONFIG
 # -----------------------------
 BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
 CHAT_ID = "2091748695"
@@ -26,7 +26,7 @@ def send_telegram(msg):
         pass
 
 # -----------------------------
-# ⏱ COOLDOWN
+# COOLDOWN SYSTEM
 # -----------------------------
 last_alert_time = {}
 ALERT_COOLDOWN = 60
@@ -34,34 +34,35 @@ ALERT_COOLDOWN = 60
 def should_alert(key):
     now = time.time()
     last = last_alert_time.get(key, 0)
+
     if now - last > ALERT_COOLDOWN:
         last_alert_time[key] = now
         return True
     return False
 
 # -----------------------------
-# 📦 DATABASE
+# DATABASE
 # -----------------------------
 def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            process TEXT,
-            score INTEGER,
-            device TEXT,
-            action TEXT
-        )
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password BLOB
+    )
     """)
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            password TEXT
-        )
+    CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        process TEXT,
+        score INTEGER,
+        device TEXT,
+        action TEXT
+    )
     """)
 
     conn.commit()
@@ -70,33 +71,53 @@ def init_db():
 init_db()
 
 # -----------------------------
-# 🧑 SIGNUP
+# SIGNUP
 # -----------------------------
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
+    error = ""
+
     if request.method == "POST":
         user = request.form.get("username")
         pwd = request.form.get("password")
 
-        conn = sqlite3.connect("data.db")
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user, pwd))
-        conn.commit()
-        conn.close()
+        if not user or not pwd:
+            error = "❌ Fill all fields"
+        else:
+            hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
 
-        return redirect("/login")
+            try:
+                conn = sqlite3.connect("data.db")
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO users (username, password) VALUES (?, ?)",
+                    (user, hashed)
+                )
+                conn.commit()
+                conn.close()
 
-    return """
-    <h2 style="text-align:center;">Signup</h2>
-    <form method="POST" style="text-align:center;">
-    <input name="username"><br><br>
-    <input name="password" type="password"><br><br>
+                return redirect("/login")
+
+            except:
+                error = "❌ Username already exists"
+
+    return f"""
+    <html>
+    <body style="text-align:center;margin-top:100px;">
+    <h2>Signup</h2>
+    <div style="color:red">{error}</div>
+    <form method="POST">
+    <input name="username" placeholder="Username"><br><br>
+    <input name="password" type="password" placeholder="Password"><br><br>
     <button>Signup</button>
     </form>
+    <br><a href="/login">Login</a>
+    </body>
+    </html>
     """
 
 # -----------------------------
-# 🔐 LOGIN
+# LOGIN
 # -----------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -108,78 +129,38 @@ def login():
 
         conn = sqlite3.connect("data.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (user, pwd))
+        cursor.execute("SELECT password FROM users WHERE username=?", (user,))
         result = cursor.fetchone()
         conn.close()
 
         if result:
-            session["user"] = user
-            return redirect("/")
+            stored_hash = result[0]
+
+            if bcrypt.checkpw(pwd.encode(), stored_hash):
+                session["user"] = user
+                return redirect("/")
+            else:
+                error = "❌ Wrong Password"
         else:
-            error = "❌ Wrong Username or Password"
+            error = "❌ User not found"
 
     return f"""
     <html>
-    <head>
-    <style>
-    body {{
-        background: linear-gradient(135deg,#141e30,#243b55);
-        font-family: Arial;
-        color:white;
-        text-align:center;
-        margin-top:100px;
-    }}
-    .box {{
-        background: rgba(255,255,255,0.1);
-        padding:30px;
-        border-radius:10px;
-        display:inline-block;
-    }}
-    input {{
-        padding:10px;
-        margin:10px;
-        width:200px;
-        border:none;
-        border-radius:5px;
-    }}
-    button {{
-        padding:10px 20px;
-        border:none;
-        background:#00c6ff;
-        color:white;
-        border-radius:5px;
-        cursor:pointer;
-    }}
-    .error {{
-        color:red;
-        margin-bottom:10px;
-    }}
-    </style>
-    </head>
-
-    <body>
-
-    <div class="box">
-        <h2>🔐 AI Security Login</h2>
-
-        <div class="error">{error}</div>
-
-        <form method="POST">
-            <input name="username" placeholder="Username"><br>
-            <input name="password" type="password" placeholder="Password"><br>
-            <button>Login</button>
-        </form>
-
-        <br>
-        <a href="/signup" style="color:lightblue;">Create Account</a>
-    </div>
-
+    <body style="text-align:center;margin-top:100px;">
+    <h2>🔐 Login</h2>
+    <div style="color:red">{error}</div>
+    <form method="POST">
+    <input name="username"><br><br>
+    <input name="password" type="password"><br><br>
+    <button>Login</button>
+    </form>
+    <br><a href="/signup">Create Account</a>
     </body>
     </html>
     """
 
 # -----------------------------
-# 🚪 LOGOUT
+# LOGOUT
 # -----------------------------
 @app.route("/logout")
 def logout():
@@ -187,7 +168,7 @@ def logout():
     return redirect("/login")
 
 # -----------------------------
-# 📡 RECEIVE DATA
+# RECEIVE DATA
 # -----------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
@@ -211,13 +192,13 @@ def receive_data():
         key = f"{device}-{process}"
         if should_alert(key):
             send_telegram(
-                f"🚨 HIGH THREAT!\nDevice: {device}\nIP: {process}\nScore: {score}\nAction: {action}"
+                f"🚨 HIGH THREAT!\nDevice: {device}\nProcess/IP: {process}\nScore: {score}\nAction: {action}"
             )
 
     return jsonify({"status": "saved"})
 
 # -----------------------------
-# 🚫 BLOCK
+# BLOCK
 # -----------------------------
 @app.route("/block", methods=["POST"])
 def block_ip():
@@ -225,12 +206,11 @@ def block_ip():
         return "Unauthorized"
 
     ip = request.json.get("ip")
-    os.system(f'netsh advfirewall firewall add rule name="Manual Block {ip}" dir=out action=block remoteip={ip}')
-
+    os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
     return jsonify({"status": "blocked"})
 
 # -----------------------------
-# 🔓 UNBLOCK
+# UNBLOCK
 # -----------------------------
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
@@ -238,12 +218,11 @@ def unblock_ip():
         return "Unauthorized"
 
     ip = request.json.get("ip")
-    os.system(f'netsh advfirewall firewall delete rule name="Manual Block {ip}"')
-
+    os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
     return jsonify({"status": "unblocked"})
 
 # -----------------------------
-# 🎨 DASHBOARD
+# DASHBOARD
 # -----------------------------
 @app.route("/")
 def dashboard():
@@ -262,85 +241,30 @@ def dashboard():
 
     html = f"""
     <html>
-    <head>
-    <title>AI Security Dashboard</title>
-    <style>
-    body {{
-        background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-        color:white;
-        font-family:Segoe UI;
-        text-align:center;
-    }}
-    .cards {{
-        display:flex;
-        justify-content:center;
-        gap:20px;
-        margin:20px;
-    }}
-    .card {{
-        padding:20px;
-        border-radius:12px;
-        width:150px;
-        font-weight:bold;
-    }}
-    .high {{background:red;}}
-    .medium {{background:yellow;color:black;}}
-    .low {{background:green;}}
-
-    table {{
-        margin:auto;
-        width:90%;
-        border-collapse:collapse;
-        background:rgba(255,255,255,0.05);
-    }}
-    th,td {{
-        padding:10px;
-        border-bottom:1px solid rgba(255,255,255,0.1);
-    }}
-    tr:hover {{
-        background:rgba(255,255,255,0.1);
-    }}
-    button {{
-        padding:6px;
-        border:none;
-        border-radius:5px;
-        cursor:pointer;
-    }}
-    .block {{background:red;color:white;}}
-    .unblock {{background:green;color:white;}}
-    </style>
-    </head>
-
-    <body>
-
+    <body style="background:#0f2027;color:white;text-align:center;font-family:sans-serif;">
     <h1>🔥 AI Security Dashboard</h1>
-
     <a href="/logout" style="color:white;">Logout</a>
 
-    <div class="cards">
-        <div class="card high">🔴 High<br>{high}</div>
-        <div class="card medium">🟡 Medium<br>{medium}</div>
-        <div class="card low">🟢 Low<br>{low}</div>
-    </div>
+    <h3>🔴 High: {high} | 🟡 Medium: {medium} | 🟢 Low: {low}</h3>
 
-    <table>
+    <table border="1" style="margin:auto;width:90%;color:white;">
     <tr>
-    <th>IP</th>
+    <th>Process/IP</th>
     <th>Score</th>
     <th>Action</th>
     <th>Control</th>
     </tr>
     """
 
-    for p,s,a in rows:
+    for p, s, a in rows:
         html += f"""
         <tr>
         <td>{p}</td>
         <td>{s}</td>
         <td>{a}</td>
         <td>
-        <button class="block" onclick="blockIP('{p}')">Block</button>
-        <button class="unblock" onclick="unblockIP('{p}')">Unblock</button>
+        <button onclick="blockIP('{p}')">Block</button>
+        <button onclick="unblockIP('{p}')">Unblock</button>
         </td>
         </tr>
         """
@@ -365,7 +289,7 @@ def dashboard():
     return html
 
 # -----------------------------
-# 🚀 RUN
+# RUN
 # -----------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
