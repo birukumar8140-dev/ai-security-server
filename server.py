@@ -259,7 +259,7 @@ def dashboard():
 
     <body>
 
-    <h1>🔥 AI Security Dashboard</h1>
+    <h1> AI Security Dashboard</h1>
 
     <div class="cards">
         <div class="card high">🔴 High<br>{high}</div>
