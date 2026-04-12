@@ -100,6 +100,8 @@ def signup():
 # -----------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    error = ""
+
     if request.method == "POST":
         user = request.form.get("username")
         pwd = request.form.get("password")
@@ -114,17 +116,64 @@ def login():
             session["user"] = user
             return redirect("/")
         else:
-            return "❌ Wrong credentials"
+            error = "❌ Wrong Username or Password"
 
-    return """
+    return f"""
     <html>
-    <body style="text-align:center; margin-top:100px;">
-        <h2>🔐 Login</h2>
+    <head>
+    <style>
+    body {{
+        background: linear-gradient(135deg,#141e30,#243b55);
+        font-family: Arial;
+        color:white;
+        text-align:center;
+        margin-top:100px;
+    }}
+    .box {{
+        background: rgba(255,255,255,0.1);
+        padding:30px;
+        border-radius:10px;
+        display:inline-block;
+    }}
+    input {{
+        padding:10px;
+        margin:10px;
+        width:200px;
+        border:none;
+        border-radius:5px;
+    }}
+    button {{
+        padding:10px 20px;
+        border:none;
+        background:#00c6ff;
+        color:white;
+        border-radius:5px;
+        cursor:pointer;
+    }}
+    .error {{
+        color:red;
+        margin-bottom:10px;
+    }}
+    </style>
+    </head>
+
+    <body>
+
+    <div class="box">
+        <h2>🔐 AI Security Login</h2>
+
+        <div class="error">{error}</div>
+
         <form method="POST">
-            <input name="username"><br><br>
-            <input name="password" type="password"><br><br>
+            <input name="username" placeholder="Username"><br>
+            <input name="password" type="password" placeholder="Password"><br>
             <button>Login</button>
         </form>
+
+        <br>
+        <a href="/signup" style="color:lightblue;">Create Account</a>
+    </div>
+
     </body>
     </html>
     """
