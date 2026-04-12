@@ -25,6 +25,20 @@ def send_telegram(msg):
         pass
 
 # -----------------------------
+# COOLDOWN
+# -----------------------------
+last_alert_time = {}
+ALERT_COOLDOWN = 60
+
+def should_alert(key):
+    now = time.time()
+    last = last_alert_time.get(key, 0)
+    if now - last > ALERT_COOLDOWN:
+        last_alert_time[key] = now
+        return True
+    return False
+
+# -----------------------------
 # DATABASE
 # -----------------------------
 def init_db():
@@ -60,6 +74,7 @@ init_db()
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     error = ""
+
     if request.method == "POST":
         user = request.form.get("username")
         pwd = request.form.get("password")
@@ -68,24 +83,73 @@ def signup():
             error = "Fill all fields"
         else:
             hashed = generate_password_hash(pwd)
+
             try:
                 conn = sqlite3.connect("data.db")
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO users VALUES (NULL, ?, ?)", (user, hashed))
+                cursor.execute(
+                    "INSERT INTO users (username, password) VALUES (?, ?)",
+                    (user, hashed)
+                )
                 conn.commit()
                 conn.close()
+
                 return redirect("/login")
             except:
-                error = "Username exists"
+                error = "Username already exists"
 
     return f"""
-    <h2>Signup</h2>
-    <div style="color:red">{error}</div>
-    <form method="POST">
-    <input name="username"><br><br>
-    <input name="password" type="password"><br><br>
-    <button>Signup</button>
-    </form>
+    <html>
+    <head>
+    <style>
+    body {{
+        margin:0;
+        height:100vh;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        background: linear-gradient(135deg,#0f2027,#2c5364);
+        font-family:'Segoe UI';
+    }}
+    .box {{
+        background: rgba(255,255,255,0.08);
+        backdrop-filter: blur(10px);
+        padding:40px;
+        border-radius:15px;
+        width:300px;
+        text-align:center;
+    }}
+    input {{
+        width:100%;
+        padding:10px;
+        margin:10px 0;
+        border-radius:8px;
+        border:none;
+    }}
+    button {{
+        width:100%;
+        padding:10px;
+        background:#00c6ff;
+        border:none;
+        border-radius:8px;
+        color:white;
+    }}
+    .error {{ color:red; }}
+    </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>Create Account</h2>
+            <div class="error">{error}</div>
+            <form method="POST">
+                <input name="username" placeholder="Username">
+                <input name="password" type="password" placeholder="Password">
+                <button>Signup</button>
+            </form>
+            <p><a href="/login">Login</a></p>
+        </div>
+    </body>
+    </html>
     """
 
 # -----------------------------
@@ -112,13 +176,56 @@ def login():
             error = "Wrong credentials"
 
     return f"""
-    <h2>Login</h2>
-    <div style="color:red">{error}</div>
-    <form method="POST">
-    <input name="username"><br><br>
-    <input name="password" type="password"><br><br>
-    <button>Login</button>
-    </form>
+    <html>
+    <head>
+    <style>
+    body {{
+        margin:0;
+        height:100vh;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        background: linear-gradient(135deg,#141e30,#243b55);
+        font-family: 'Segoe UI';
+    }}
+    .box {{
+        background: rgba(255,255,255,0.08);
+        padding:40px;
+        border-radius:15px;
+        width:300px;
+        text-align:center;
+    }}
+    input {{
+        width:100%;
+        padding:10px;
+        margin:10px 0;
+        border:none;
+        border-radius:8px;
+    }}
+    button {{
+        width:100%;
+        padding:10px;
+        border:none;
+        border-radius:8px;
+        background:#00c6ff;
+        color:white;
+    }}
+    .error {{ color:red; }}
+    </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>Login</h2>
+            <div class="error">{error}</div>
+            <form method="POST">
+                <input name="username">
+                <input name="password" type="password">
+                <button>Login</button>
+            </form>
+            <p><a href="/signup">Signup</a></p>
+        </div>
+    </body>
+    </html>
     """
 
 # -----------------------------
@@ -130,7 +237,7 @@ def logout():
     return redirect("/login")
 
 # -----------------------------
-# BLOCK
+# BLOCK / UNBLOCK
 # -----------------------------
 @app.route("/block", methods=["POST"])
 def block_ip():
@@ -141,9 +248,6 @@ def block_ip():
     os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
     return jsonify({"status": "blocked"})
 
-# -----------------------------
-# UNBLOCK
-# -----------------------------
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
     if "user" not in session:
@@ -154,7 +258,25 @@ def unblock_ip():
     return jsonify({"status": "unblocked"})
 
 # -----------------------------
-# DASHBOARD
+# RECEIVE DATA
+# -----------------------------
+@app.route("/data", methods=["POST"])
+def receive_data():
+    data = request.json
+
+    conn = sqlite3.connect("data.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO logs (process, score, device, action) VALUES (?, ?, ?, ?)",
+        (data["process"], data["score"], data["device"], data["action"])
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "saved"})
+
+# -----------------------------
+# DASHBOARD (PRO UI)
 # -----------------------------
 @app.route("/")
 def dashboard():
@@ -167,19 +289,53 @@ def dashboard():
     rows = cursor.fetchall()
     conn.close()
 
-    html = """
-    <html>
-    <body style="background:#0f2027;color:white;text-align:center;">
-    <h1>🔥 AI Security Dashboard</h1>
-    <a href="/logout">Logout</a>
+    high = sum(1 for r in rows if r[1] >= 90)
+    medium = sum(1 for r in rows if 30 < r[1] < 90)
+    low = sum(1 for r in rows if r[1] <= 30)
 
-    <table border="1" style="margin:auto;width:90%;">
-    <tr>
-    <th>IP</th>
-    <th>Score</th>
-    <th>Action</th>
-    <th>Control</th>
-    </tr>
+    html = f"""
+    <html>
+    <head>
+    <style>
+    body {{margin:0;font-family:Segoe UI;background:#0f2027;color:white;display:flex;}}
+    .sidebar {{width:220px;background:#111;height:100vh;padding:20px;}}
+    .sidebar h2 {{color:#00c6ff;}}
+    .main {{flex:1;padding:20px;}}
+
+    .cards {{display:flex;gap:20px;margin-bottom:20px;}}
+    .card {{flex:1;padding:20px;border-radius:10px;text-align:center;font-weight:bold;}}
+    .high {{background:red;}}
+    .medium {{background:yellow;color:black;}}
+    .low {{background:green;}}
+
+    table {{width:100%;border-collapse:collapse;}}
+    th, td {{padding:10px;border-bottom:1px solid rgba(255,255,255,0.1);}}
+
+    button {{padding:5px;border:none;border-radius:5px;cursor:pointer;}}
+    .block {{background:red;color:white;}}
+    .unblock {{background:green;color:white;}}
+    </style>
+    </head>
+
+    <body>
+
+    <div class="sidebar">
+        <h2>AI Security</h2>
+        <a href="/">Dashboard</a><br>
+        <a href="/logout">Logout</a>
+    </div>
+
+    <div class="main">
+    <h1>Security Dashboard</h1>
+
+    <div class="cards">
+        <div class="card high">High<br>{high}</div>
+        <div class="card medium">Medium<br>{medium}</div>
+        <div class="card low">Low<br>{low}</div>
+    </div>
+
+    <table>
+    <tr><th>IP</th><th>Score</th><th>Action</th><th>Control</th></tr>
     """
 
     for p, s, a in rows:
@@ -189,8 +345,8 @@ def dashboard():
         <td>{s}</td>
         <td>{a}</td>
         <td>
-        <button onclick="blockIP('{p}')">Block</button>
-        <button onclick="unblockIP('{p}')">Unblock</button>
+        <button class="block" onclick="blockIP('{p}')">Block</button>
+        <button class="unblock" onclick="unblockIP('{p}')">Unblock</button>
         </td>
         </tr>
         """
@@ -205,8 +361,10 @@ def dashboard():
     function unblockIP(ip){
         fetch("/unblock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
     }
+    setTimeout(()=>location.reload(),5000);
     </script>
 
+    </div>
     </body>
     </html>
     """
