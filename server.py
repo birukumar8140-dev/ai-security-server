@@ -3,15 +3,14 @@ import sqlite3
 import requests
 import time
 import os
-import bcrypt
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
-
 app.config["SESSION_PERMANENT"] = False
 
 # -----------------------------
-# TELEGRAM CONFIG
+# TELEGRAM
 # -----------------------------
 BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
 CHAT_ID = "2091748695"
@@ -26,7 +25,7 @@ def send_telegram(msg):
         pass
 
 # -----------------------------
-# COOLDOWN SYSTEM
+# COOLDOWN
 # -----------------------------
 last_alert_time = {}
 ALERT_COOLDOWN = 60
@@ -51,7 +50,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
-        password BLOB
+        password TEXT
     )
     """)
 
@@ -84,7 +83,7 @@ def signup():
         if not user or not pwd:
             error = "❌ Fill all fields"
         else:
-            hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
+            hashed = generate_password_hash(pwd)
 
             try:
                 conn = sqlite3.connect("data.db")
@@ -97,23 +96,18 @@ def signup():
                 conn.close()
 
                 return redirect("/login")
-
             except:
                 error = "❌ Username already exists"
 
     return f"""
-    <html>
-    <body style="text-align:center;margin-top:100px;">
-    <h2>Signup</h2>
-    <div style="color:red">{error}</div>
-    <form method="POST">
-    <input name="username" placeholder="Username"><br><br>
-    <input name="password" type="password" placeholder="Password"><br><br>
+    <h2 style="text-align:center;">Signup</h2>
+    <div style="color:red;text-align:center;">{error}</div>
+    <form method="POST" style="text-align:center;">
+    <input name="username"><br><br>
+    <input name="password" type="password"><br><br>
     <button>Signup</button>
     </form>
-    <br><a href="/login">Login</a>
-    </body>
-    </html>
+    <p style="text-align:center;"><a href="/login">Login</a></p>
     """
 
 # -----------------------------
@@ -136,7 +130,7 @@ def login():
         if result:
             stored_hash = result[0]
 
-            if bcrypt.checkpw(pwd.encode(), stored_hash):
+            if check_password_hash(stored_hash, pwd):
                 session["user"] = user
                 return redirect("/")
             else:
@@ -235,56 +229,19 @@ def dashboard():
     rows = cursor.fetchall()
     conn.close()
 
-    high = sum(1 for r in rows if r[1] >= 90)
-    medium = sum(1 for r in rows if 30 < r[1] < 90)
-    low = sum(1 for r in rows if r[1] <= 30)
-
-    html = f"""
+    html = """
     <html>
-    <body style="background:#0f2027;color:white;text-align:center;font-family:sans-serif;">
+    <body style="background:#0f2027;color:white;text-align:center;">
     <h1>🔥 AI Security Dashboard</h1>
     <a href="/logout" style="color:white;">Logout</a>
-
-    <h3>🔴 High: {high} | 🟡 Medium: {medium} | 🟢 Low: {low}</h3>
-
     <table border="1" style="margin:auto;width:90%;color:white;">
-    <tr>
-    <th>Process/IP</th>
-    <th>Score</th>
-    <th>Action</th>
-    <th>Control</th>
-    </tr>
+    <tr><th>Process/IP</th><th>Score</th><th>Action</th></tr>
     """
 
     for p, s, a in rows:
-        html += f"""
-        <tr>
-        <td>{p}</td>
-        <td>{s}</td>
-        <td>{a}</td>
-        <td>
-        <button onclick="blockIP('{p}')">Block</button>
-        <button onclick="unblockIP('{p}')">Unblock</button>
-        </td>
-        </tr>
-        """
+        html += f"<tr><td>{p}</td><td>{s}</td><td>{a}</td></tr>"
 
-    html += """
-    </table>
-
-    <script>
-    function blockIP(ip){
-        fetch("/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
-    }
-    function unblockIP(ip){
-        fetch("/unblock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
-    }
-    setTimeout(()=>location.reload(),5000);
-    </script>
-
-    </body>
-    </html>
-    """
+    html += "</table></body></html>"
 
     return html
 
