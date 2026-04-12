@@ -1,10 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session, redirect
 import sqlite3
 import requests
 import time
 import os
 
 app = Flask(__name__)
+app.secret_key = "supersecretkey"   # change later
+
+# -----------------------------
+# 🔑 LOGIN CONFIG
+# -----------------------------
+USERNAME = "admin"
+PASSWORD = "veer$#@01"
 
 # -----------------------------
 # 🔑 TELEGRAM
@@ -59,6 +66,40 @@ def init_db():
 init_db()
 
 # -----------------------------
+# 🔐 LOGIN PAGE
+# -----------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user = request.form.get("username")
+        pwd = request.form.get("password")
+
+        if user == USERNAME and pwd == PASSWORD:
+            session["logged_in"] = True
+            return redirect("/")
+        else:
+            return "❌ Wrong credentials"
+
+    return """
+    <html>
+    <body style="text-align:center; margin-top:100px;">
+        <h2>🔐 Admin Login</h2>
+        <form method="POST">
+            <input name="username" placeholder="Username"><br><br>
+            <input name="password" type="password" placeholder="Password"><br><br>
+            <button type="submit">Login</button>
+        </form>
+    </body>
+    </html>
+    """
+
+# -----------------------------
+# 🔒 AUTH CHECK
+# -----------------------------
+def is_logged_in():
+    return session.get("logged_in")
+
+# -----------------------------
 # 📡 RECEIVE DATA
 # -----------------------------
 @app.route("/data", methods=["POST"])
@@ -81,54 +122,54 @@ def receive_data():
     conn.commit()
     conn.close()
 
-    print(f"📥 {device} | {process} | {score} | {action}")
-
-    # 🚨 TELEGRAM ALERT
+    # 🚨 TELEGRAM
     if score >= 90:
         key = f"{device}-{process}"
 
         if should_alert(key):
             send_telegram(
-                f"🚨 HIGH THREAT!\n"
-                f"Device: {device}\n"
-                f"IP: {process}\n"
-                f"Score: {score}\n"
-                f"Action: {action}"
+                f"🚨 HIGH THREAT!\nDevice: {device}\nIP: {process}\nScore: {score}\nAction: {action}"
             )
 
     return jsonify({"status": "saved"})
 
 # -----------------------------
-# 🚫 BLOCK API
+# 🚫 BLOCK
 # -----------------------------
 @app.route("/block", methods=["POST"])
 def block_ip_manual():
-    data = request.json
-    ip = data.get("ip")
+    if not is_logged_in():
+        return "Unauthorized"
 
-    command = f'netsh advfirewall firewall add rule name="Manual Block {ip}" dir=out action=block remoteip={ip}'
-    os.system(command)
+    ip = request.json.get("ip")
 
-    return jsonify({"status": "blocked", "ip": ip})
+    os.system(f'netsh advfirewall firewall add rule name="Manual Block {ip}" dir=out action=block remoteip={ip}')
+
+    return jsonify({"status": "blocked"})
 
 # -----------------------------
-# 🔓 UNBLOCK API
+# 🔓 UNBLOCK
 # -----------------------------
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
-    data = request.json
-    ip = data.get("ip")
+    if not is_logged_in():
+        return "Unauthorized"
+
+    ip = request.json.get("ip")
 
     os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
     os.system(f'netsh advfirewall firewall delete rule name="Manual Block {ip}"')
 
-    return jsonify({"status": "unblocked", "ip": ip})
+    return jsonify({"status": "unblocked"})
 
 # -----------------------------
 # 📊 DASHBOARD
 # -----------------------------
 @app.route("/")
 def dashboard():
+    if not is_logged_in():
+        return redirect("/login")
+
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
@@ -137,99 +178,47 @@ def dashboard():
 
     conn.close()
 
-    high = sum(1 for r in rows if r[1] >= 90)
-    medium = sum(1 for r in rows if 30 < r[1] < 90)
-    low = sum(1 for r in rows if r[1] <= 30)
-
-    html = f"""
+    html = """
     <html>
-    <head>
-        <title>AI Security Control Panel</title>
-        <style>
-            body {{
-                background: #0f2027;
-                color: white;
-                text-align: center;
-                font-family: Arial;
-            }}
-            table {{
-                margin: auto;
-                border-collapse: collapse;
-                width: 90%;
-            }}
-            th, td {{
-                border: 1px solid white;
-                padding: 8px;
-            }}
-            button {{
-                padding: 5px;
-                margin: 2px;
-            }}
-        </style>
-    </head>
-
-    <body>
-
-    <h1>🔥 AI Security Control Panel</h1>
-
-    <h2>🔴 High: {high}</h2>
-    <h2>🟡 Medium: {medium}</h2>
-    <h2>🟢 Low: {low}</h2>
-
-    <table>
-        <tr>
-            <th>IP</th>
-            <th>Score</th>
-            <th>Action</th>
-            <th>Control</th>
-        </tr>
+    <body style="background:black; color:white; text-align:center;">
+    <h1>🔥 Secure AI Dashboard</h1>
+    <table border=1 style="margin:auto;">
+    <tr><th>IP</th><th>Score</th><th>Action</th><th>Control</th></tr>
     """
 
     for process, score, action in rows:
-        color = "white"
-
-        if score >= 90:
-            color = "red"
-        elif score > 30:
-            color = "yellow"
-        else:
-            color = "lightgreen"
-
         html += f"""
-        <tr style='color:{color}'>
-            <td>{process}</td>
-            <td>{score}</td>
-            <td>{action}</td>
-            <td>
-                <button onclick="blockIP('{process}')">Block</button>
-                <button onclick="unblockIP('{process}')">Unblock</button>
-            </td>
+        <tr>
+        <td>{process}</td>
+        <td>{score}</td>
+        <td>{action}</td>
+        <td>
+            <button onclick="blockIP('{process}')">Block</button>
+            <button onclick="unblockIP('{process}')">Unblock</button>
+        </td>
         </tr>
         """
 
-    html += f"""
+    html += """
     </table>
 
     <script>
-        function blockIP(ip) {{
-            fetch("/block", {{
-                method: "POST",
-                headers: {{ "Content-Type": "application/json" }},
-                body: JSON.stringify({{ ip: ip }})
-            }});
-        }}
+    function blockIP(ip){
+        fetch("/block", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({ip:ip})
+        });
+    }
 
-        function unblockIP(ip) {{
-            fetch("/unblock", {{
-                method: "POST",
-                headers: {{ "Content-Type": "application/json" }},
-                body: JSON.stringify({{ ip: ip }})
-            }});
-        }}
-
-        setTimeout(() => {{
-            location.reload();
-        }}, 5000);
+    function unblockIP(ip){
+        fetch("/unblock", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({ip:ip})
+        });
+    }
+    setTimeout(()=>location.reload(),5000);
     </script>
 
     </body>
