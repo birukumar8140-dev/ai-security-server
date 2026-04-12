@@ -25,21 +25,6 @@ def send_telegram(msg):
         pass
 
 # -----------------------------
-# COOLDOWN
-# -----------------------------
-last_alert_time = {}
-ALERT_COOLDOWN = 60
-
-def should_alert(key):
-    now = time.time()
-    last = last_alert_time.get(key, 0)
-
-    if now - last > ALERT_COOLDOWN:
-        last_alert_time[key] = now
-        return True
-    return False
-
-# -----------------------------
 # DATABASE
 # -----------------------------
 def init_db():
@@ -75,39 +60,32 @@ init_db()
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     error = ""
-
     if request.method == "POST":
         user = request.form.get("username")
         pwd = request.form.get("password")
 
         if not user or not pwd:
-            error = "❌ Fill all fields"
+            error = "Fill all fields"
         else:
             hashed = generate_password_hash(pwd)
-
             try:
                 conn = sqlite3.connect("data.db")
                 cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO users (username, password) VALUES (?, ?)",
-                    (user, hashed)
-                )
+                cursor.execute("INSERT INTO users VALUES (NULL, ?, ?)", (user, hashed))
                 conn.commit()
                 conn.close()
-
                 return redirect("/login")
             except:
-                error = "❌ Username already exists"
+                error = "Username exists"
 
     return f"""
-    <h2 style="text-align:center;">Signup</h2>
-    <div style="color:red;text-align:center;">{error}</div>
-    <form method="POST" style="text-align:center;">
+    <h2>Signup</h2>
+    <div style="color:red">{error}</div>
+    <form method="POST">
     <input name="username"><br><br>
     <input name="password" type="password"><br><br>
     <button>Signup</button>
     </form>
-    <p style="text-align:center;"><a href="/login">Login</a></p>
     """
 
 # -----------------------------
@@ -127,30 +105,20 @@ def login():
         result = cursor.fetchone()
         conn.close()
 
-        if result:
-            stored_hash = result[0]
-
-            if check_password_hash(stored_hash, pwd):
-                session["user"] = user
-                return redirect("/")
-            else:
-                error = "❌ Wrong Password"
+        if result and check_password_hash(result[0], pwd):
+            session["user"] = user
+            return redirect("/")
         else:
-            error = "❌ User not found"
+            error = "Wrong credentials"
 
     return f"""
-    <html>
-    <body style="text-align:center;margin-top:100px;">
-    <h2>🔐 Login</h2>
+    <h2>Login</h2>
     <div style="color:red">{error}</div>
     <form method="POST">
     <input name="username"><br><br>
     <input name="password" type="password"><br><br>
     <button>Login</button>
     </form>
-    <br><a href="/signup">Create Account</a>
-    </body>
-    </html>
     """
 
 # -----------------------------
@@ -160,36 +128,6 @@ def login():
 def logout():
     session.clear()
     return redirect("/login")
-
-# -----------------------------
-# RECEIVE DATA
-# -----------------------------
-@app.route("/data", methods=["POST"])
-def receive_data():
-    data = request.json
-
-    process = data.get("process")
-    score = data.get("score")
-    device = data.get("device")
-    action = data.get("action", "none")
-
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO logs (process, score, device, action) VALUES (?, ?, ?, ?)",
-        (process, score, device, action)
-    )
-    conn.commit()
-    conn.close()
-
-    if score >= 90:
-        key = f"{device}-{process}"
-        if should_alert(key):
-            send_telegram(
-                f"🚨 HIGH THREAT!\nDevice: {device}\nProcess/IP: {process}\nScore: {score}\nAction: {action}"
-            )
-
-    return jsonify({"status": "saved"})
 
 # -----------------------------
 # BLOCK
@@ -233,15 +171,45 @@ def dashboard():
     <html>
     <body style="background:#0f2027;color:white;text-align:center;">
     <h1>🔥 AI Security Dashboard</h1>
-    <a href="/logout" style="color:white;">Logout</a>
-    <table border="1" style="margin:auto;width:90%;color:white;">
-    <tr><th>Process/IP</th><th>Score</th><th>Action</th></tr>
+    <a href="/logout">Logout</a>
+
+    <table border="1" style="margin:auto;width:90%;">
+    <tr>
+    <th>IP</th>
+    <th>Score</th>
+    <th>Action</th>
+    <th>Control</th>
+    </tr>
     """
 
     for p, s, a in rows:
-        html += f"<tr><td>{p}</td><td>{s}</td><td>{a}</td></tr>"
+        html += f"""
+        <tr>
+        <td>{p}</td>
+        <td>{s}</td>
+        <td>{a}</td>
+        <td>
+        <button onclick="blockIP('{p}')">Block</button>
+        <button onclick="unblockIP('{p}')">Unblock</button>
+        </td>
+        </tr>
+        """
 
-    html += "</table></body></html>"
+    html += """
+    </table>
+
+    <script>
+    function blockIP(ip){
+        fetch("/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
+    }
+    function unblockIP(ip){
+        fetch("/unblock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
+    }
+    </script>
+
+    </body>
+    </html>
+    """
 
     return html
 
