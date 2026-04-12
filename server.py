@@ -281,7 +281,7 @@ def receive_data():
 @app.route("/")
 def dashboard():
     if "user" not in session:
-        return redirect("/login")
+        return redirect("/signup")
 
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
