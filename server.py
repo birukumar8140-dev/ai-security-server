@@ -2,29 +2,30 @@ from flask import Flask, request, jsonify
 import sqlite3
 import requests
 import time
+import os
 
 app = Flask(__name__)
 
 # -----------------------------
-# 🔑 TELEGRAM CONFIG
+# 🔑 TELEGRAM
 # -----------------------------
 BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
 CHAT_ID = "2091748695"
 
-def send_telegram(message):
+def send_telegram(msg):
     try:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": message}
+            data={"chat_id": CHAT_ID, "text": msg}
         )
     except:
         pass
 
 # -----------------------------
-# ⏱ COOLDOWN SYSTEM
+# ⏱ COOLDOWN
 # -----------------------------
 last_alert_time = {}
-ALERT_COOLDOWN = 60  # seconds
+ALERT_COOLDOWN = 60
 
 def should_alert(key):
     now = time.time()
@@ -36,7 +37,7 @@ def should_alert(key):
     return False
 
 # -----------------------------
-# 📦 DATABASE SETUP
+# 📦 DATABASE
 # -----------------------------
 def init_db():
     conn = sqlite3.connect("data.db")
@@ -82,7 +83,7 @@ def receive_data():
 
     print(f"📥 {device} | {process} | {score} | {action}")
 
-    # 🚨 SMART TELEGRAM ALERT
+    # 🚨 TELEGRAM ALERT
     if score >= 90:
         key = f"{device}-{process}"
 
@@ -90,12 +91,38 @@ def receive_data():
             send_telegram(
                 f"🚨 HIGH THREAT!\n"
                 f"Device: {device}\n"
-                f"Process: {process}\n"
+                f"IP: {process}\n"
                 f"Score: {score}\n"
                 f"Action: {action}"
             )
 
     return jsonify({"status": "saved"})
+
+# -----------------------------
+# 🚫 BLOCK API
+# -----------------------------
+@app.route("/block", methods=["POST"])
+def block_ip_manual():
+    data = request.json
+    ip = data.get("ip")
+
+    command = f'netsh advfirewall firewall add rule name="Manual Block {ip}" dir=out action=block remoteip={ip}'
+    os.system(command)
+
+    return jsonify({"status": "blocked", "ip": ip})
+
+# -----------------------------
+# 🔓 UNBLOCK API
+# -----------------------------
+@app.route("/unblock", methods=["POST"])
+def unblock_ip():
+    data = request.json
+    ip = data.get("ip")
+
+    os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
+    os.system(f'netsh advfirewall firewall delete rule name="Manual Block {ip}"')
+
+    return jsonify({"status": "unblocked", "ip": ip})
 
 # -----------------------------
 # 📊 DASHBOARD
@@ -117,7 +144,7 @@ def dashboard():
     html = f"""
     <html>
     <head>
-        <title>AI Security Dashboard</title>
+        <title>AI Security Control Panel</title>
         <style>
             body {{
                 background: #0f2027;
@@ -128,18 +155,22 @@ def dashboard():
             table {{
                 margin: auto;
                 border-collapse: collapse;
-                width: 80%;
+                width: 90%;
             }}
             th, td {{
                 border: 1px solid white;
                 padding: 8px;
+            }}
+            button {{
+                padding: 5px;
+                margin: 2px;
             }}
         </style>
     </head>
 
     <body>
 
-    <h1>🔥 AI Security Dashboard</h1>
+    <h1>🔥 AI Security Control Panel</h1>
 
     <h2>🔴 High: {high}</h2>
     <h2>🟡 Medium: {medium}</h2>
@@ -147,9 +178,10 @@ def dashboard():
 
     <table>
         <tr>
-            <th>Process</th>
+            <th>IP</th>
             <th>Score</th>
             <th>Action</th>
+            <th>Control</th>
         </tr>
     """
 
@@ -163,31 +195,36 @@ def dashboard():
         else:
             color = "lightgreen"
 
-        html += f"<tr style='color:{color}'><td>{process}</td><td>{score}</td><td>{action}</td></tr>"
+        html += f"""
+        <tr style='color:{color}'>
+            <td>{process}</td>
+            <td>{score}</td>
+            <td>{action}</td>
+            <td>
+                <button onclick="blockIP('{process}')">Block</button>
+                <button onclick="unblockIP('{process}')">Unblock</button>
+            </td>
+        </tr>
+        """
 
     html += f"""
     </table>
 
     <script>
-        var high = {high};
-
-        let lastAlert = localStorage.getItem("lastAlert");
-
-        if (high > 0 && lastAlert != "shown") {{
-
-            alert("🚨 HIGH THREAT DETECTED!");
-
-            var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
-
-            audio.play().catch(() => {{
-                document.body.onclick = () => audio.play();
+        function blockIP(ip) {{
+            fetch("/block", {{
+                method: "POST",
+                headers: {{ "Content-Type": "application/json" }},
+                body: JSON.stringify({{ ip: ip }})
             }});
-
-            localStorage.setItem("lastAlert", "shown");
         }}
 
-        if (high == 0) {{
-            localStorage.removeItem("lastAlert");
+        function unblockIP(ip) {{
+            fetch("/unblock", {{
+                method: "POST",
+                headers: {{ "Content-Type": "application/json" }},
+                body: JSON.stringify({{ ip: ip }})
+            }});
         }}
 
         setTimeout(() => {{
