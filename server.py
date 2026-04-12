@@ -31,7 +31,6 @@ ALERT_COOLDOWN = 60
 def should_alert(key):
     now = time.time()
     last = last_alert_time.get(key, 0)
-
     if now - last > ALERT_COOLDOWN:
         last_alert_time[key] = now
         return True
@@ -44,7 +43,6 @@ def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
-    # logs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +53,6 @@ def init_db():
         )
     """)
 
-    # users table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +77,6 @@ def signup():
 
         conn = sqlite3.connect("data.db")
         cursor = conn.cursor()
-
         cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user, pwd))
         conn.commit()
         conn.close()
@@ -90,8 +86,8 @@ def signup():
     return """
     <h2>Signup</h2>
     <form method="POST">
-    <input name="username" placeholder="Username"><br><br>
-    <input name="password" type="password" placeholder="Password"><br><br>
+    <input name="username"><br><br>
+    <input name="password" type="password"><br><br>
     <button>Signup</button>
     </form>
     """
@@ -107,7 +103,6 @@ def login():
 
         conn = sqlite3.connect("data.db")
         cursor = conn.cursor()
-
         cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (user, pwd))
         result = cursor.fetchone()
         conn.close()
@@ -119,16 +114,20 @@ def login():
             return "❌ Wrong credentials"
 
     return """
-    <h2>Login</h2>
-    <form method="POST">
-    <input name="username"><br><br>
-    <input name="password" type="password"><br><br>
-    <button>Login</button>
-    </form>
+    <html>
+    <body style="text-align:center; margin-top:100px;">
+        <h2>🔐 Login</h2>
+        <form method="POST">
+            <input name="username"><br><br>
+            <input name="password" type="password"><br><br>
+            <button>Login</button>
+        </form>
+    </body>
+    </html>
     """
 
 # -----------------------------
-# 🔒 AUTH CHECK
+# 🔒 AUTH
 # -----------------------------
 def is_logged_in():
     return "user" in session
@@ -147,19 +146,19 @@ def receive_data():
 
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
-
     cursor.execute(
         "INSERT INTO logs (process, score, device, action) VALUES (?, ?, ?, ?)",
         (process, score, device, action)
     )
-
     conn.commit()
     conn.close()
 
     if score >= 90:
         key = f"{device}-{process}"
         if should_alert(key):
-            send_telegram(f"🚨 THREAT: {process}")
+            send_telegram(
+                f"🚨 HIGH THREAT!\nDevice: {device}\nIP: {process}\nScore: {score}\nAction: {action}"
+            )
 
     return jsonify({"status": "saved"})
 
@@ -190,7 +189,7 @@ def unblock_ip():
     return jsonify({"status": "unblocked"})
 
 # -----------------------------
-# 📊 DASHBOARD
+# 🎨 DASHBOARD (BEAUTIFUL UI)
 # -----------------------------
 @app.route("/")
 def dashboard():
@@ -199,30 +198,100 @@ def dashboard():
 
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
-
     cursor.execute("SELECT process, score, action FROM logs ORDER BY id DESC LIMIT 50")
     rows = cursor.fetchall()
-
     conn.close()
 
-    html = "<h1>AI Security Dashboard</h1><table border=1>"
-    html += "<tr><th>IP</th><th>Score</th><th>Action</th><th>Control</th></tr>"
+    high = sum(1 for r in rows if r[1] >= 90)
+    medium = sum(1 for r in rows if 30 < r[1] < 90)
+    low = sum(1 for r in rows if r[1] <= 30)
 
-    for p, s, a in rows:
+    html = f"""
+    <html>
+    <head>
+    <title>AI Security Dashboard</title>
+    <style>
+    body {{
+        background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+        color:white;
+        font-family:Segoe UI;
+        text-align:center;
+    }}
+    .cards {{
+        display:flex;
+        justify-content:center;
+        gap:20px;
+        margin:20px;
+    }}
+    .card {{
+        padding:20px;
+        border-radius:12px;
+        width:150px;
+        font-weight:bold;
+    }}
+    .high {{background:red;}}
+    .medium {{background:yellow;color:black;}}
+    .low {{background:green;}}
+
+    table {{
+        margin:auto;
+        width:90%;
+        border-collapse:collapse;
+        background:rgba(255,255,255,0.05);
+    }}
+    th,td {{
+        padding:10px;
+        border-bottom:1px solid rgba(255,255,255,0.1);
+    }}
+    tr:hover {{
+        background:rgba(255,255,255,0.1);
+    }}
+    button {{
+        padding:6px;
+        border:none;
+        border-radius:5px;
+        cursor:pointer;
+    }}
+    .block {{background:red;color:white;}}
+    .unblock {{background:green;color:white;}}
+    </style>
+    </head>
+
+    <body>
+
+    <h1>🔥 AI Security Dashboard</h1>
+
+    <div class="cards">
+        <div class="card high">🔴 High<br>{high}</div>
+        <div class="card medium">🟡 Medium<br>{medium}</div>
+        <div class="card low">🟢 Low<br>{low}</div>
+    </div>
+
+    <table>
+    <tr>
+    <th>IP</th>
+    <th>Score</th>
+    <th>Action</th>
+    <th>Control</th>
+    </tr>
+    """
+
+    for p,s,a in rows:
         html += f"""
         <tr>
         <td>{p}</td>
         <td>{s}</td>
         <td>{a}</td>
         <td>
-        <button onclick="blockIP('{p}')">Block</button>
-        <button onclick="unblockIP('{p}')">Unblock</button>
+        <button class="block" onclick="blockIP('{p}')">Block</button>
+        <button class="unblock" onclick="unblockIP('{p}')">Unblock</button>
         </td>
         </tr>
         """
 
     html += """
     </table>
+
     <script>
     function blockIP(ip){
         fetch("/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
@@ -230,7 +299,11 @@ def dashboard():
     function unblockIP(ip){
         fetch("/unblock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
     }
+    setTimeout(()=>location.reload(),5000);
     </script>
+
+    </body>
+    </html>
     """
 
     return html
