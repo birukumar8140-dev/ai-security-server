@@ -7,6 +7,9 @@ import os
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
+# SESSION FIX
+app.config["SESSION_PERMANENT"] = False
+
 # -----------------------------
 # 🔑 TELEGRAM
 # -----------------------------
@@ -84,8 +87,8 @@ def signup():
         return redirect("/login")
 
     return """
-    <h2>Signup</h2>
-    <form method="POST">
+    <h2 style="text-align:center;">Signup</h2>
+    <form method="POST" style="text-align:center;">
     <input name="username"><br><br>
     <input name="password" type="password"><br><br>
     <button>Signup</button>
@@ -127,10 +130,12 @@ def login():
     """
 
 # -----------------------------
-# 🔒 AUTH
+# 🚪 LOGOUT
 # -----------------------------
-def is_logged_in():
-    return "user" in session
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 # -----------------------------
 # 📡 RECEIVE DATA
@@ -167,7 +172,7 @@ def receive_data():
 # -----------------------------
 @app.route("/block", methods=["POST"])
 def block_ip():
-    if not is_logged_in():
+    if "user" not in session:
         return "Unauthorized"
 
     ip = request.json.get("ip")
@@ -180,7 +185,7 @@ def block_ip():
 # -----------------------------
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
-    if not is_logged_in():
+    if "user" not in session:
         return "Unauthorized"
 
     ip = request.json.get("ip")
@@ -189,11 +194,11 @@ def unblock_ip():
     return jsonify({"status": "unblocked"})
 
 # -----------------------------
-# 🎨 DASHBOARD (BEAUTIFUL UI)
+# 🎨 DASHBOARD
 # -----------------------------
 @app.route("/")
 def dashboard():
-    if not is_logged_in():
+    if "user" not in session:
         return redirect("/login")
 
     conn = sqlite3.connect("data.db")
@@ -259,7 +264,9 @@ def dashboard():
 
     <body>
 
-    <h1> AI Security Dashboard</h1>
+    <h1>🔥 AI Security Dashboard</h1>
+
+    <a href="/logout" style="color:white;">Logout</a>
 
     <div class="cards">
         <div class="card high">🔴 High<br>{high}</div>
