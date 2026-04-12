@@ -5,13 +5,7 @@ import time
 import os
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"   # change later
-
-# -----------------------------
-# 🔑 LOGIN CONFIG
-# -----------------------------
-USERNAME = "admin"
-PASSWORD = "veer$#@01"
+app.secret_key = "supersecretkey"
 
 # -----------------------------
 # 🔑 TELEGRAM
@@ -50,6 +44,7 @@ def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
+    # logs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,13 +55,49 @@ def init_db():
         )
     """)
 
+    # users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            password TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
 # -----------------------------
-# 🔐 LOGIN PAGE
+# 🧑 SIGNUP
+# -----------------------------
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "POST":
+        user = request.form.get("username")
+        pwd = request.form.get("password")
+
+        conn = sqlite3.connect("data.db")
+        cursor = conn.cursor()
+
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user, pwd))
+        conn.commit()
+        conn.close()
+
+        return redirect("/login")
+
+    return """
+    <h2>Signup</h2>
+    <form method="POST">
+    <input name="username" placeholder="Username"><br><br>
+    <input name="password" type="password" placeholder="Password"><br><br>
+    <button>Signup</button>
+    </form>
+    """
+
+# -----------------------------
+# 🔐 LOGIN
 # -----------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -74,30 +105,33 @@ def login():
         user = request.form.get("username")
         pwd = request.form.get("password")
 
-        if user == USERNAME and pwd == PASSWORD:
-            session["logged_in"] = True
+        conn = sqlite3.connect("data.db")
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (user, pwd))
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            session["user"] = user
             return redirect("/")
         else:
             return "❌ Wrong credentials"
 
     return """
-    <html>
-    <body style="text-align:center; margin-top:100px;">
-        <h2>🔐 Admin Login</h2>
-        <form method="POST">
-            <input name="username" placeholder="Username"><br><br>
-            <input name="password" type="password" placeholder="Password"><br><br>
-            <button type="submit">Login</button>
-        </form>
-    </body>
-    </html>
+    <h2>Login</h2>
+    <form method="POST">
+    <input name="username"><br><br>
+    <input name="password" type="password"><br><br>
+    <button>Login</button>
+    </form>
     """
 
 # -----------------------------
 # 🔒 AUTH CHECK
 # -----------------------------
 def is_logged_in():
-    return session.get("logged_in")
+    return "user" in session
 
 # -----------------------------
 # 📡 RECEIVE DATA
@@ -122,14 +156,10 @@ def receive_data():
     conn.commit()
     conn.close()
 
-    # 🚨 TELEGRAM
     if score >= 90:
         key = f"{device}-{process}"
-
         if should_alert(key):
-            send_telegram(
-                f"🚨 HIGH THREAT!\nDevice: {device}\nIP: {process}\nScore: {score}\nAction: {action}"
-            )
+            send_telegram(f"🚨 THREAT: {process}")
 
     return jsonify({"status": "saved"})
 
@@ -137,12 +167,11 @@ def receive_data():
 # 🚫 BLOCK
 # -----------------------------
 @app.route("/block", methods=["POST"])
-def block_ip_manual():
+def block_ip():
     if not is_logged_in():
         return "Unauthorized"
 
     ip = request.json.get("ip")
-
     os.system(f'netsh advfirewall firewall add rule name="Manual Block {ip}" dir=out action=block remoteip={ip}')
 
     return jsonify({"status": "blocked"})
@@ -156,8 +185,6 @@ def unblock_ip():
         return "Unauthorized"
 
     ip = request.json.get("ip")
-
-    os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
     os.system(f'netsh advfirewall firewall delete rule name="Manual Block {ip}"')
 
     return jsonify({"status": "unblocked"})
@@ -178,51 +205,32 @@ def dashboard():
 
     conn.close()
 
-    html = """
-    <html>
-    <body style="background:black; color:white; text-align:center;">
-    <h1>🔥 Secure AI Dashboard</h1>
-    <table border=1 style="margin:auto;">
-    <tr><th>IP</th><th>Score</th><th>Action</th><th>Control</th></tr>
-    """
+    html = "<h1>AI Security Dashboard</h1><table border=1>"
+    html += "<tr><th>IP</th><th>Score</th><th>Action</th><th>Control</th></tr>"
 
-    for process, score, action in rows:
+    for p, s, a in rows:
         html += f"""
         <tr>
-        <td>{process}</td>
-        <td>{score}</td>
-        <td>{action}</td>
+        <td>{p}</td>
+        <td>{s}</td>
+        <td>{a}</td>
         <td>
-            <button onclick="blockIP('{process}')">Block</button>
-            <button onclick="unblockIP('{process}')">Unblock</button>
+        <button onclick="blockIP('{p}')">Block</button>
+        <button onclick="unblockIP('{p}')">Unblock</button>
         </td>
         </tr>
         """
 
     html += """
     </table>
-
     <script>
     function blockIP(ip){
-        fetch("/block", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({ip:ip})
-        });
+        fetch("/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
     }
-
     function unblockIP(ip){
-        fetch("/unblock", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({ip:ip})
-        });
+        fetch("/unblock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ip:ip})});
     }
-    setTimeout(()=>location.reload(),5000);
     </script>
-
-    </body>
-    </html>
     """
 
     return html
