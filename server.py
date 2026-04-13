@@ -4,6 +4,7 @@ import requests
 import time
 import os
 import re
+import psycopg2
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -42,28 +43,31 @@ def should_alert(key):
 # -----------------------------
 # DATABASE
 # -----------------------------
-def init_db():
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+def get_db():
+    return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+    
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         username TEXT UNIQUE,
         password TEXT
     )
     """)
-
+    
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         process TEXT,
         score INTEGER,
         device TEXT,
         action TEXT
     )
     """)
-
+    
     conn.commit()
     conn.close()
 
