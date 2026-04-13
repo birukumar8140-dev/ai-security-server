@@ -89,15 +89,17 @@ def signup():
             hashed = generate_password_hash(pwd)
 
             try:
-                conn = get_db()
-cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (user, hashed))
-                )
-                conn.commit()
-                conn.close()
-
-                return redirect("/login")
-            except:
-                error = "Username already exists"
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO users (username, password) VALUES (%s, %s)",
+        (user, hashed)
+    )
+    conn.commit()
+    conn.close()
+    return redirect("/login")
+except:
+    error = "Username already exists"
 
     return """
 <html>
@@ -172,9 +174,10 @@ def login():
         pwd = request.form.get("password")
 
         conn = get_db()
+cursor = conn.cursor()
 cursor.execute("SELECT password FROM users WHERE username=%s", (user,))
-        result = cursor.fetchone()
-        conn.close()
+result = cursor.fetchone()
+conn.close()
 
         if result and check_password_hash(result[0], pwd):
             session["user"] = user
@@ -293,11 +296,13 @@ def receive_data():
     data = request.json
 
     conn = get_db()
-cursor.execute("INSERT INTO logs ... VALUES (%s, %s, %s, %s)", ...)",
-        (data["process"], data["score"], data["device"], data["action"])
-    )
-    conn.commit()
-    conn.close()
+cursor = conn.cursor()
+cursor.execute(
+    "INSERT INTO logs (process, score, device, action) VALUES (%s, %s, %s, %s)",
+    (data["process"], data["score"], data["device"], data["action"])
+)
+conn.commit()
+conn.close()
 
     return jsonify({"status": "saved"})
 
