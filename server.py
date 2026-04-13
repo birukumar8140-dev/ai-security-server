@@ -247,14 +247,15 @@ def is_valid_ip(ip):
 def block_ip():
     if "user" not in session:
         return "Unauthorized"
-    
+
     ip = request.json.get("ip")
-    
-   if not is_valid_ip(ip):        
-       return jsonify({"error": "Invalid IP"}), 400
-    
+
+    if not is_valid_ip(ip):
+        return jsonify({"error": "Invalid IP"}), 400
+
     os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
     return jsonify({"status": "blocked"})
+
     
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
@@ -272,9 +273,9 @@ def unblock_ip():
 # -----------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
-
     if "user" not in session:
-    return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.json
 
     conn = sqlite3.connect("data.db")
