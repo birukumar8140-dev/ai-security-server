@@ -183,58 +183,66 @@ def login():
         else:
             error = "Wrong credentials"
 
-    return f"""
-    <html>
-    <head>
-    <style>
-    body {{
-        margin:0;
-        height:100vh;
-        display:flex;
-        justify-content:center;
-        align-items:center;
-        background: linear-gradient(135deg,#141e30,#243b55);
-        font-family: 'Segoe UI';
-    }}
-    .box {{
-        background: rgba(255,255,255,0.08);
-        padding:40px;
-        border-radius:15px;
-        width:300px;
-        text-align:center;
-    }}
-    input {{
-        width:100%;
-        padding:10px;
-        margin:10px 0;
-        border:none;
-        border-radius:8px;
-    }}
-    button {{
-        width:100%;
-        padding:10px;
-        border:none;
-        border-radius:8px;
-        background:#00c6ff;
-        color:white;
-    }}
-    .error {{ color:red; }}
-    </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Login</h2>
-            <div class="error">{error}</div>
-            <form method="POST">
-                <input name="username">
-                <input name="password" type="password">
-                <button>Login</button>
-            </form>
-            <p><a href="/signup">Signup</a></p>
-        </div>
-    </body>
-    </html>
-    """
+    return """
+<html>
+<head>
+<style>
+body {
+    margin:0; height:100vh; display:flex;
+    justify-content:center; align-items:center;
+    background: linear-gradient(135deg,#0f2027,#2c5364);
+    font-family:'Segoe UI';
+}
+.box {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(10px);
+    padding:40px; border-radius:15px;
+    width:320px; text-align:center; color:white;
+}
+h2 { margin-bottom:5px; }
+p { color:#aaa; font-size:13px; margin-bottom:20px; }
+input {
+    width:100%; padding:12px; margin:8px 0;
+    border-radius:8px; border:none;
+    background:rgba(255,255,255,0.15); color:white;
+    box-sizing:border-box;
+}
+input::placeholder { color:#ccc; }
+.btn {
+    width:100%; padding:12px; margin-top:10px;
+    background:#00c6ff; border:none;
+    border-radius:8px; color:white;
+    font-size:15px; cursor:pointer;
+}
+.divider {
+    display:flex; align-items:center; margin:15px 0;
+    color:#aaa; font-size:13px;
+}
+.divider::before, .divider::after {
+    content:''; flex:1;
+    height:1px; background:rgba(255,255,255,0.2);
+    margin:0 10px;
+}
+.link { color:#00c6ff; text-decoration:none; font-size:13px; }
+.error { color:#ff6b6b; font-size:13px; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div class="box">
+    <h2>BharatShield</h2>
+    <p>AI Security — Welcome back</p>
+    """ + (f'<div class="error">{error}</div>' if error else '') + """
+    <form method="POST">
+        <input name="username" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Password" required>
+        <button class="btn" type="submit">Login</button>
+    </form>
+    <div class="divider">new here?</div>
+    <a href="/signup" class="link">Create Account →</a>
+</div>
+</body>
+</html>
+"""
 
 # -----------------------------
 # LOGOUT
