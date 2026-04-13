@@ -250,8 +250,8 @@ def block_ip():
     
     ip = request.json.get("ip")
     
-    if not is_valid_ip(ip):        
-        return jsonify({"error": "Invalid IP"}), 400
+   if not is_valid_ip(ip):        
+          return jsonify({"error": "Invalid IP"}), 400
     
     os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
     return jsonify({"status": "blocked"})
@@ -263,7 +263,7 @@ def unblock_ip():
 
     ip = request.json.get("ip")
     if not is_valid_ip(ip):
-    return jsonify({"error": "Invalid IP"}), 400
+        return jsonify({"error": "Invalid IP"}), 400
     os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
     return jsonify({"status": "unblocked"})
 
