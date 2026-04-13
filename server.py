@@ -3,17 +3,18 @@ import sqlite3
 import requests
 import time
 import os
+import re
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY")
 app.config["SESSION_PERMANENT"] = False
 
 # -----------------------------
 # TELEGRAM
 # -----------------------------
-BOT_TOKEN = "8719648742:AAHZoS32yiIihyeM4WLMx2x7HZeF3VY-8Xk"
-CHAT_ID = "2091748695"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
 def send_telegram(msg):
     try:
@@ -239,21 +240,30 @@ def logout():
 # -----------------------------
 # BLOCK / UNBLOCK
 # -----------------------------
+def is_valid_ip(ip):
+    pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+    return re.match(pattern, ip)
 @app.route("/block", methods=["POST"])
 def block_ip():
     if "user" not in session:
         return "Unauthorized"
-
+    
     ip = request.json.get("ip")
+    
+    if not is_valid_ip(ip):        
+        return jsonify({"error": "Invalid IP"}), 400
+    
     os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
     return jsonify({"status": "blocked"})
-
+    
 @app.route("/unblock", methods=["POST"])
 def unblock_ip():
     if "user" not in session:
         return "Unauthorized"
 
     ip = request.json.get("ip")
+    if not is_valid_ip(ip):
+    return jsonify({"error": "Invalid IP"}), 400
     os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
     return jsonify({"status": "unblocked"})
 
@@ -262,6 +272,9 @@ def unblock_ip():
 # -----------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
+
+    if "user" not in session:
+    return jsonify({"error": "Unauthorized"}), 401
     data = request.json
 
     conn = sqlite3.connect("data.db")
