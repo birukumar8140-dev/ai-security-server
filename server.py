@@ -89,11 +89,8 @@ def signup():
             hashed = generate_password_hash(pwd)
 
             try:
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO users (username, password) VALUES (?, ?)",
-                    (user, hashed)
+                conn = get_db()
+cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (user, hashed))
                 )
                 conn.commit()
                 conn.close()
@@ -174,9 +171,8 @@ def login():
         user = request.form.get("username")
         pwd = request.form.get("password")
 
-        conn = sqlite3.connect("data.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT password FROM users WHERE username=?", (user,))
+        conn = get_db()
+cursor.execute("SELECT password FROM users WHERE username=%s", (user,))
         result = cursor.fetchone()
         conn.close()
 
@@ -296,10 +292,8 @@ def receive_data():
 
     data = request.json
 
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO logs (process, score, device, action) VALUES (?, ?, ?, ?)",
+    conn = get_db()
+cursor.execute("INSERT INTO logs ... VALUES (%s, %s, %s, %s)", ...)",
         (data["process"], data["score"], data["device"], data["action"])
     )
     conn.commit()
@@ -315,7 +309,7 @@ def dashboard():
     if "user" not in session:
         return redirect("/signup")
 
-    conn = sqlite3.connect("data.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT process, score, action FROM logs ORDER BY id DESC LIMIT 50")
     rows = cursor.fetchall()
