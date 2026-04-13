@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify, session, redirect
-import sqlite3
+import psycopg2
 import requests
 import time
 import os
 import re
-import psycopg2
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
