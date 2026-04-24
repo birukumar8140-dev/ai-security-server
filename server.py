@@ -219,7 +219,18 @@ def alerts():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT *
+    SELECT
+        id,
+        device_id,
+        device_name,
+        hostname,
+        threat_type AS type,
+        category,
+        process,
+        score,
+        severity,
+        action,
+        created_at
     FROM alerts
     ORDER BY created_at DESC
     LIMIT 100
@@ -227,7 +238,6 @@ def alerts():
 
     rows = cur.fetchall()
     conn.close()
-
     return jsonify(rows)
 
 
