@@ -1,231 +1,302 @@
-from flask import Flask, request, jsonify, session, redirect
-import psycopg2
-import requests
-import time
+# BharatShield server.py (Upgraded Flask SaaS Backend)
+
 import os
-import re
-from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timezone
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+# =====================================================
+# APP
+# =====================================================
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")
-app.config["SESSION_PERMANENT"] = False
+CORS(app)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-def send_telegram(msg):
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": msg}
-        )
-    except:
-        pass
-
-last_alert_time = {}
-ALERT_COOLDOWN = 60
-
-def should_alert(key):
-    now = time.time()
-    last = last_alert_time.get(key, 0)
-    if now - last > ALERT_COOLDOWN:
-        last_alert_time[key] = now
-        return True
-    return False
+# =====================================================
+# DB
+# =====================================================
 
 def get_db():
-    return psycopg2.connect(os.environ.get("DATABASE_URL"))
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 def init_db():
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS devices (
         id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE,
-        password TEXT
+        device_id TEXT UNIQUE,
+        hostname TEXT,
+        os TEXT,
+        ip TEXT,
+        cpu REAL DEFAULT 0,
+        ram REAL DEFAULT 0,
+        version TEXT,
+        status TEXT DEFAULT 'online',
+        last_seen TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
     )
     """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS logs (
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
         id SERIAL PRIMARY KEY,
+        device_id TEXT,
+        threat_type TEXT,
         process TEXT,
         score INTEGER,
-        device TEXT,
-        action TEXT
+        severity TEXT,
+        action TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
     )
     """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS commands (
+        id SERIAL PRIMARY KEY,
+        device_id TEXT,
+        command TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
-    error = ""
-    if request.method == "POST":
-        user = request.form.get("username")
-        pwd = request.form.get("password")
-        if not user or not pwd:
-            error = "Fill all fields"
-        else:
-            hashed = generate_password_hash(pwd)
-            try:
-                conn = get_db()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO users (username, password) VALUES (%s, %s)",
-                    (user, hashed)
-                )
-                conn.commit()
-                conn.close()
-                return redirect("/login")
-            except:
-                error = "Username already exists"
+# =====================================================
+# HELPERS
+# =====================================================
 
-    return """<html><head><style>
-body{margin:0;height:100vh;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#0f2027,#2c5364);font-family:'Segoe UI';}
-.box{background:rgba(255,255,255,0.08);backdrop-filter:blur(10px);padding:40px;border-radius:15px;width:320px;text-align:center;color:white;}
-h2{margin-bottom:5px;}p{color:#aaa;font-size:13px;margin-bottom:20px;}
-input{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:none;background:rgba(255,255,255,0.15);color:white;box-sizing:border-box;}
-input::placeholder{color:#ccc;}
-.btn{width:100%;padding:12px;margin-top:10px;background:#00c6ff;border:none;border-radius:8px;color:white;font-size:15px;cursor:pointer;}
-.divider{display:flex;align-items:center;margin:15px 0;color:#aaa;font-size:13px;}
-.divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.2);margin:0 10px;}
-.link{color:#00c6ff;text-decoration:none;font-size:13px;}.error{color:#ff6b6b;font-size:13px;margin-bottom:10px;}
-</style></head><body><div class="box">
-<h2>BharatShield</h2><p>AI Security — Create your account</p>
-""" + (f'<div class="error">{error}</div>' if error else '') + """
-<form method="POST">
-<input name="username" placeholder="Username" required>
-<input name="password" type="password" placeholder="Password" required>
-<button class="btn" type="submit">Create Account</button>
-</form>
-<div class="divider">already have account?</div>
-<a href="/login" class="link">Login here →</a>
-</div></body></html>"""
+def severity_from_score(score):
+    if score >= 90:
+        return "critical"
+    elif score >= 70:
+        return "high"
+    elif score >= 50:
+        return "medium"
+    return "low"
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    error = ""
-    if request.method == "POST":
-        user = request.form.get("username")
-        pwd = request.form.get("password")
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT password FROM users WHERE username=%s", (user,))
-        result = cursor.fetchone()
-        conn.close()
-        if result and check_password_hash(result[0], pwd):
-            session["user"] = user
-            return redirect("/")
-        else:
-            error = "Wrong credentials"
-
-    return """<html><head><style>
-body{margin:0;height:100vh;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#0f2027,#2c5364);font-family:'Segoe UI';}
-.box{background:rgba(255,255,255,0.08);backdrop-filter:blur(10px);padding:40px;border-radius:15px;width:320px;text-align:center;color:white;}
-h2{margin-bottom:5px;}p{color:#aaa;font-size:13px;margin-bottom:20px;}
-input{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:none;background:rgba(255,255,255,0.15);color:white;box-sizing:border-box;}
-input::placeholder{color:#ccc;}
-.btn{width:100%;padding:12px;margin-top:10px;background:#00c6ff;border:none;border-radius:8px;color:white;font-size:15px;cursor:pointer;}
-.divider{display:flex;align-items:center;margin:15px 0;color:#aaa;font-size:13px;}
-.divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.2);margin:0 10px;}
-.link{color:#00c6ff;text-decoration:none;font-size:13px;}.error{color:#ff6b6b;font-size:13px;margin-bottom:10px;}
-</style></head><body><div class="box">
-<h2>BharatShield</h2><p>AI Security — Welcome back</p>
-""" + (f'<div class="error">{error}</div>' if error else '') + """
-<form method="POST">
-<input name="username" placeholder="Username" required>
-<input name="password" type="password" placeholder="Password" required>
-<button class="btn" type="submit">Login</button>
-</form>
-<div class="divider">new here?</div>
-<a href="/signup" class="link">Create Account →</a>
-</div></body></html>"""
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
-
-def is_valid_ip(ip):
-    pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
-    return re.match(pattern, ip)
-
-@app.route("/block", methods=["POST"])
-def block_ip():
-    if "user" not in session:
-        return "Unauthorized"
-    ip = request.json.get("ip")
-    if not is_valid_ip(ip):
-        return jsonify({"error": "Invalid IP"}), 400
-    os.system(f'netsh advfirewall firewall add rule name="Block {ip}" dir=out action=block remoteip={ip}')
-    return jsonify({"status": "blocked"})
-
-@app.route("/unblock", methods=["POST"])
-def unblock_ip():
-    if "user" not in session:
-        return "Unauthorized"
-    ip = request.json.get("ip")
-    if not is_valid_ip(ip):
-        return jsonify({"error": "Invalid IP"}), 400
-    os.system(f'netsh advfirewall firewall delete rule name="Block {ip}"')
-    return jsonify({"status": "unblocked"})
-
-@app.route("/data", methods=["POST"])
-def receive_data():
-   # if "user" not in session:
-    #    return jsonify({"error": "Unauthorized"}), 401
-    data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO logs (process, score, device, action) VALUES (%s, %s, %s, %s)",
-        (data["process"], data["score"], data["device"], data["action"])
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "saved"})
+# =====================================================
+# HEALTH
+# =====================================================
 
 @app.route("/")
-def dashboard():
-    if "user" not in session:
-        return redirect("/signup")
+def home():
+    return jsonify({
+        "name": "BharatShield API",
+        "status": "online",
+        "time": str(datetime.now(timezone.utc))
+    })
+
+# =====================================================
+# AGENT CHECKIN
+# =====================================================
+
+@app.route("/api/checkin", methods=["POST"])
+def checkin():
+    data = request.json
+
+    device_id = data.get("device_id")
+    hostname = data.get("hostname")
+    os_name = data.get("os")
+    ip = data.get("ip")
+    cpu = data.get("cpu", 0)
+    ram = data.get("ram", 0)
+    version = data.get("version", "1.0")
+
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT process, score, action FROM logs ORDER BY id DESC LIMIT 50")
-    rows = cursor.fetchall()
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO devices
+    (device_id, hostname, os, ip, cpu, ram, version, last_seen, status)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,NOW(),'online')
+    ON CONFLICT (device_id)
+    DO UPDATE SET
+        hostname=EXCLUDED.hostname,
+        os=EXCLUDED.os,
+        ip=EXCLUDED.ip,
+        cpu=EXCLUDED.cpu,
+        ram=EXCLUDED.ram,
+        version=EXCLUDED.version,
+        last_seen=NOW(),
+        status='online'
+    """, (
+        device_id, hostname, os_name, ip, cpu, ram, version
+    ))
+
+    conn.commit()
     conn.close()
-    high = sum(1 for r in rows if r[1] >= 90)
-    medium = sum(1 for r in rows if 30 < r[1] < 90)
-    low = sum(1 for r in rows if r[1] <= 30)
-    html = f"""<html><head><style>
-body{{margin:0;font-family:Segoe UI;background:#0f2027;color:white;display:flex;}}
-.sidebar{{width:220px;background:#111;height:100vh;padding:20px;}}
-.sidebar h2{{color:#00c6ff;}}.main{{flex:1;padding:20px;}}
-.cards{{display:flex;gap:20px;margin-bottom:20px;}}
-.card{{flex:1;padding:20px;border-radius:10px;text-align:center;font-weight:bold;}}
-.high{{background:red;}}.medium{{background:yellow;color:black;}}.low{{background:green;}}
-table{{width:100%;border-collapse:collapse;}}
-th,td{{padding:10px;border-bottom:1px solid rgba(255,255,255,0.1);}}
-button{{padding:5px;border:none;border-radius:5px;cursor:pointer;}}
-.block{{background:red;color:white;}}.unblock{{background:green;color:white;}}
-</style></head><body>
-<div class="sidebar"><h2>BharatShield</h2><a href="/">Dashboard</a><br><a href="/logout">Logout</a></div>
-<div class="main"><h1>Security Dashboard</h1>
-<div class="cards">
-<div class="card high">High<br>{high}</div>
-<div class="card medium">Medium<br>{medium}</div>
-<div class="card low">Low<br>{low}</div>
-</div>
-<table><tr><th>Process</th><th>Score</th><th>Action</th></tr>"""
-    for p, s, a in rows:
-        html += f"<tr><td>{p}</td><td>{s}</td><td>{a}</td></tr>"
-    html += """</table>
-<script>setTimeout(()=>location.reload(),5000);</script>
-</div></body></html>"""
-    return html
+
+    return jsonify({"status": "ok"})
+
+# =====================================================
+# ALERT RECEIVE
+# =====================================================
+
+@app.route("/api/alert", methods=["POST"])
+def alert():
+    data = request.json
+
+    score = int(data.get("score", 0))
+    severity = severity_from_score(score)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO alerts
+    (device_id, threat_type, process, score, severity, action)
+    VALUES (%s,%s,%s,%s,%s,%s)
+    """, (
+        data.get("device_id"),
+        data.get("type"),
+        data.get("process"),
+        score,
+        severity,
+        data.get("action", "detected")
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "saved"})
+
+# =====================================================
+# GET DEVICES
+# =====================================================
+
+@app.route("/api/devices")
+def devices():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT * FROM devices
+    ORDER BY last_seen DESC
+    """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return jsonify(rows)
+
+# =====================================================
+# GET ALERTS
+# =====================================================
+
+@app.route("/api/alerts")
+def alerts():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT * FROM alerts
+    ORDER BY created_at DESC
+    LIMIT 100
+    """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return jsonify(rows)
+
+# =====================================================
+# SEND COMMAND FROM DASHBOARD
+# =====================================================
+
+@app.route("/api/command", methods=["POST"])
+def send_command():
+    data = request.json
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO commands (device_id, command)
+    VALUES (%s,%s)
+    """, (
+        data.get("device_id"),
+        data.get("command")
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "queued"})
+
+# =====================================================
+# AGENT FETCH COMMANDS
+# =====================================================
+
+@app.route("/api/commands/<device_id>")
+def get_commands(device_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT * FROM commands
+    WHERE device_id=%s AND status='pending'
+    ORDER BY id ASC
+    """, (device_id,))
+
+    rows = cur.fetchall()
+
+    ids = [r["id"] for r in rows]
+
+    if ids:
+        cur.execute("""
+        UPDATE commands
+        SET status='sent'
+        WHERE id = ANY(%s)
+        """, (ids,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify(rows)
+
+# =====================================================
+# STATS
+# =====================================================
+
+@app.route("/api/stats")
+def stats():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) AS c FROM devices")
+    devices = cur.fetchone()["c"]
+
+    cur.execute("SELECT COUNT(*) AS c FROM alerts")
+    alerts = cur.fetchone()["c"]
+
+    cur.execute("""
+    SELECT COUNT(*) AS c FROM alerts
+    WHERE severity='critical'
+    """)
+    critical = cur.fetchone()["c"]
+
+    conn.close()
+
+    return jsonify({
+        "devices": devices,
+        "alerts": alerts,
+        "critical": critical
+    })
+
+# =====================================================
+# RUN
+# =====================================================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
