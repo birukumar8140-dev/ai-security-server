@@ -1,4 +1,4 @@
-# BharatShield server.py (Full Upgraded Version)
+# BharatShield server
 
 import os
 from datetime import datetime, timezone
