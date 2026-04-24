@@ -149,44 +149,51 @@ def checkin():
 
 @app.route("/api/alert", methods=["POST"])
 def receive_alert():
-    data = request.json
+    try:
+        data = request.json or {}
 
-    score = int(data.get("score", 0))
-    severity = data.get("severity") or severity_from_score(score)
+        score = int(data.get("score", 0))
+        severity = data.get("severity") or severity_from_score(score)
 
-    conn = get_db()
-    cur = conn.cursor()
+        conn = get_db()
+        cur = conn.cursor()
 
-    cur.execute("""
-    INSERT INTO alerts
-    (
-      device_id,
-      device_name,
-      hostname,
-      threat_type,
-      category,
-      process,
-      score,
-      severity,
-      action
-    )
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """, (
-        data.get("device_id"),
-        data.get("device_name"),
-        data.get("hostname"),
-        data.get("type"),
-        data.get("category"),
-        data.get("process"),
-        score,
-        severity,
-        data.get("action", "detected")
-    ))
+        cur.execute("""
+        INSERT INTO alerts
+        (
+          device_id,
+          device_name,
+          hostname,
+          threat_type,
+          category,
+          process,
+          score,
+          severity,
+          action
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            str(data.get("device_id", "")),
+            str(data.get("device_name", "")),
+            str(data.get("hostname", "")),
+            str(data.get("type", "")),
+            str(data.get("category", "General Threat")),
+            str(data.get("process", "")),
+            score,
+            severity,
+            str(data.get("action", "detected"))
+        ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
-    return jsonify({"status": "saved"})
+        return jsonify({"status": "saved"})
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 # =====================================================
