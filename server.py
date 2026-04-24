@@ -17,7 +17,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # =====================================================
 # DB
 # =====================================================
-
 def get_db():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
@@ -57,6 +56,17 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )
     """)
+
+    # FIX OLD DATABASE COLUMNS
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS device_name TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS hostname TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS threat_type TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS category TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS process TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score INTEGER")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS action TEXT")
+    cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS commands (
