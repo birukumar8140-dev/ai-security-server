@@ -1,4 +1,4 @@
-# BharatShield server.py (Upgraded Flask SaaS Backend)
+# BharatShield server.py (Full Upgraded Version)
 
 import os
 from datetime import datetime, timezone
@@ -8,14 +8,11 @@ from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# =====================================================
-# APP
-# =====================================================
-
 app = Flask(__name__)
 CORS(app)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 # =====================================================
 # DB
@@ -23,6 +20,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 
 def init_db():
     conn = get_db()
@@ -48,7 +46,10 @@ def init_db():
     CREATE TABLE IF NOT EXISTS alerts (
         id SERIAL PRIMARY KEY,
         device_id TEXT,
+        device_name TEXT,
+        hostname TEXT,
         threat_type TEXT,
+        category TEXT,
         process TEXT,
         score INTEGER,
         severity TEXT,
@@ -70,7 +71,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 # =====================================================
 # HELPERS
@@ -78,12 +81,13 @@ init_db()
 
 def severity_from_score(score):
     if score >= 90:
-        return "critical"
+        return "Critical"
     elif score >= 70:
-        return "high"
+        return "High"
     elif score >= 50:
-        return "medium"
-    return "low"
+        return "Medium"
+    return "Low"
+
 
 # =====================================================
 # HEALTH
@@ -97,21 +101,14 @@ def home():
         "time": str(datetime.now(timezone.utc))
     })
 
+
 # =====================================================
-# AGENT CHECKIN
+# CHECKIN
 # =====================================================
 
 @app.route("/api/checkin", methods=["POST"])
 def checkin():
     data = request.json
-
-    device_id = data.get("device_id")
-    hostname = data.get("hostname")
-    os_name = data.get("os")
-    ip = data.get("ip")
-    cpu = data.get("cpu", 0)
-    ram = data.get("ram", 0)
-    version = data.get("version", "1.0")
 
     conn = get_db()
     cur = conn.cursor()
@@ -131,7 +128,13 @@ def checkin():
         last_seen=NOW(),
         status='online'
     """, (
-        device_id, hostname, os_name, ip, cpu, ram, version
+        data.get("device_id"),
+        data.get("hostname"),
+        data.get("os"),
+        data.get("ip"),
+        data.get("cpu", 0),
+        data.get("ram", 0),
+        data.get("version", "1.0")
     ))
 
     conn.commit()
@@ -139,27 +142,41 @@ def checkin():
 
     return jsonify({"status": "ok"})
 
+
 # =====================================================
 # ALERT RECEIVE
 # =====================================================
 
 @app.route("/api/alert", methods=["POST"])
-def alert():
+def receive_alert():
     data = request.json
 
     score = int(data.get("score", 0))
-    severity = severity_from_score(score)
+    severity = data.get("severity") or severity_from_score(score)
 
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
     INSERT INTO alerts
-    (device_id, threat_type, process, score, severity, action)
-    VALUES (%s,%s,%s,%s,%s,%s)
+    (
+      device_id,
+      device_name,
+      hostname,
+      threat_type,
+      category,
+      process,
+      score,
+      severity,
+      action
+    )
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         data.get("device_id"),
+        data.get("device_name"),
+        data.get("hostname"),
         data.get("type"),
+        data.get("category"),
         data.get("process"),
         score,
         severity,
@@ -171,8 +188,9 @@ def alert():
 
     return jsonify({"status": "saved"})
 
+
 # =====================================================
-# GET DEVICES
+# DEVICES
 # =====================================================
 
 @app.route("/api/devices")
@@ -190,8 +208,9 @@ def devices():
 
     return jsonify(rows)
 
+
 # =====================================================
-# GET ALERTS
+# ALERTS
 # =====================================================
 
 @app.route("/api/alerts")
@@ -200,7 +219,8 @@ def alerts():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT * FROM alerts
+    SELECT *
+    FROM alerts
     ORDER BY created_at DESC
     LIMIT 100
     """)
@@ -210,8 +230,9 @@ def alerts():
 
     return jsonify(rows)
 
+
 # =====================================================
-# SEND COMMAND FROM DASHBOARD
+# COMMAND SEND
 # =====================================================
 
 @app.route("/api/command", methods=["POST"])
@@ -234,8 +255,9 @@ def send_command():
 
     return jsonify({"status": "queued"})
 
+
 # =====================================================
-# AGENT FETCH COMMANDS
+# COMMAND FETCH
 # =====================================================
 
 @app.route("/api/commands/<device_id>")
@@ -244,13 +266,13 @@ def get_commands(device_id):
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT * FROM commands
+    SELECT *
+    FROM commands
     WHERE device_id=%s AND status='pending'
     ORDER BY id ASC
     """, (device_id,))
 
     rows = cur.fetchall()
-
     ids = [r["id"] for r in rows]
 
     if ids:
@@ -264,6 +286,24 @@ def get_commands(device_id):
     conn.close()
 
     return jsonify(rows)
+
+
+# =====================================================
+# RESET ALERTS (ONE CLICK CLEANUP)
+# =====================================================
+
+@app.route("/api/reset-alerts", methods=["POST"])
+def reset_alerts():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM alerts")
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "alerts cleared"})
+
 
 # =====================================================
 # STATS
@@ -281,8 +321,9 @@ def stats():
     alerts = cur.fetchone()["c"]
 
     cur.execute("""
-    SELECT COUNT(*) AS c FROM alerts
-    WHERE severity='critical'
+    SELECT COUNT(*) AS c
+    FROM alerts
+    WHERE severity='Critical'
     """)
     critical = cur.fetchone()["c"]
 
@@ -293,6 +334,7 @@ def stats():
         "alerts": alerts,
         "critical": critical
     })
+
 
 # =====================================================
 # RUN
